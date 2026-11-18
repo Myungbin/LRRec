@@ -1,0 +1,6 @@
+# Baby -- 150,777 users / 36,013 items / 1,241,083 interactions (AlphaFree paper, Table 2)
+# files: ../data/amazon_baby/cf_data/{train,valid,test}.txt, ../data/amazon_baby/item_info/item_cf_embeds_LLAMA_array.npy
+
+# item language representations: LLaMA-3-8B last-token embedding, d_LR = 4096
+lr_feature_file: 'item_info/item_cf_embeds_LLAMA_array.npy'
+lm_model: llama

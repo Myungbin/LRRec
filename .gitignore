@@ -221,3 +221,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# LRRec: datasets (symlink to large storage), run outputs
+/data
+src/log/
+src/saved/
+src/recommend_topk/

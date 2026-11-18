@@ -1,0 +1,6 @@
+# Book (AlphaRec split) -- 71,306 users / 40,523 items / 2,206,865 interactions (AlphaFree paper, Table 2)
+# files: ../data/amazon_book_2014/cf_data/{train,valid,test}.txt, ../data/amazon_book_2014/item_info/item_cf_embeds_large3_array.npy
+
+# item language representations: OpenAI text-embedding-3-large, d_LR = 3072 (LRs from AlphaRec)
+lr_feature_file: 'item_info/item_cf_embeds_large3_array.npy'
+lm_model: v3

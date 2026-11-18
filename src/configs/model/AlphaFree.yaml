@@ -1,0 +1,29 @@
+# AlphaFree (Jeon et al., WWW'26) -- see models/alphafree.py
+# Defaults = official code (lr 5e-4, batch 4096, 256 uniform negatives, MLP d_LR -> ratio*d_LR -> 64).
+is_lr_model: True
+neg_sample_num: 256      # 0 = in-batch negatives (official --infonce 1 --neg_sample -1)
+train_sampling: user
+learning_rate: 0.0005
+train_batch_size: 4096
+
+tau_r: 0.15              # recommendation (InfoNCE) temperature
+tau_a: 0.2               # alignment temperature
+lambda_align: 0.2        # alignment loss weight
+K_c: 5                   # number of co-occurring candidates per item (S_i)
+
+# augmentation knobs (paper = raw / False / both)
+sim_b: raw               # raw = co-occurrence count, cosine = count / sqrt(deg_i deg_j)
+exclude_self: False      # drop the popularity self-loop from the S_i candidates
+aug_mode: both           # both | inter | rep | none (which augmentation feeds the augmented view)
+
+# validated hyper-parameters per dataset (official configs/<dataset>.yaml, README Table)
+dataset_params:
+  amazon_movie:           {K_c: 5,  lambda_align: 0.2,  tau_a: 0.2,  tau_r: 0.15}
+  amazon_book_2014:       {K_c: 5,  lambda_align: 0.2,  tau_a: 0.1,  tau_r: 0.15}
+  amazon_video:           {K_c: 10, lambda_align: 0.05, tau_a: 0.01, tau_r: 0.2}
+  amazon_baby:            {K_c: 10, lambda_align: 0.01, tau_a: 0.2,  tau_r: 0.2}
+  steam:                  {K_c: 3,  lambda_align: 0.01, tau_a: 0.2,  tau_r: 0.2}
+  amazon_beauty_personal: {K_c: 10, lambda_align: 0.01, tau_a: 0.1,  tau_r: 0.2}
+  amazon_health:          {K_c: 5,  lambda_align: 0.01, tau_a: 0.2,  tau_r: 0.15}
+
+hyper_parameters: []

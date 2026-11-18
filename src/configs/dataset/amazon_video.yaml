@@ -1,0 +1,6 @@
+# Video -- 94,762 users / 25,612 items / 814,586 interactions (AlphaFree paper, Table 2)
+# files: ../data/amazon_video/cf_data/{train,valid,test}.txt, ../data/amazon_video/item_info/item_cf_embeds_LLAMA_array.npy
+
+# item language representations: LLaMA-3-8B last-token embedding, d_LR = 4096
+lr_feature_file: 'item_info/item_cf_embeds_LLAMA_array.npy'
+lm_model: llama

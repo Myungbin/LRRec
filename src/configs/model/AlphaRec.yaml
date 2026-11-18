@@ -1,0 +1,14 @@
+# AlphaRec (Sheng et al., ICLR'25) -- see models/alpharec.py
+# Defaults = official code (lr 5e-4, batch 4096, 256 uniform negatives, 2 LightGCN layers, tau 0.15).
+# Memory: keeps a dense n_users x d_LR user-LR matrix and propagates the full graph every step
+# (the AlphaFree paper reports AlphaRec as o.o.m. on Beauty / Health).
+is_lr_model: True
+neg_sample_num: 256
+train_sampling: user
+learning_rate: 0.0005
+train_batch_size: 4096
+
+n_layers: 2
+tau: 0.15                # AlphaRec paper: 0.15 (Movies, Books); tune for other datasets
+
+hyper_parameters: []

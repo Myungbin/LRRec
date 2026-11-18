@@ -1,0 +1,21 @@
+# XSimGCL (Yu et al., TKDE'23) -- ID-based baseline, see models/xsimgcl.py
+is_lr_model: False       # ID embeddings only; item LRs are not loaded
+neg_sample_num: 1        # BPR
+train_sampling: user
+learning_rate: 0.001
+train_batch_size: 2048
+
+n_layers: 3
+layer_cl: 1              # layer contrasted with the final representation (1-indexed)
+eps: 0.1                 # magnitude of the signed uniform noise
+lambda_cl: 0.2           # contrastive loss weight
+tau_cl: 0.2              # contrastive temperature
+reg_weight: 0.0001
+
+# best on validation Recall@20 in the AlphaFree repo's paper-range sweep (seed 2026;
+# experiments/XSimGCL/2026-09-22_paper-range-tuning.md)
+dataset_params:
+  amazon_movie: {eps: 0.1,  lambda_cl: 0.1,  n_layers: 5, layer_cl: 1}
+  amazon_video: {eps: 0.01, lambda_cl: 0.01, n_layers: 5, layer_cl: 5}
+
+hyper_parameters: []

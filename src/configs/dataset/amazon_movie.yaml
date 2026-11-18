@@ -1,0 +1,6 @@
+# Movie (AlphaRec split) -- 26,073 users / 12,464 items / 875,906 interactions (AlphaFree paper, Table 2)
+# files: ../data/amazon_movie/cf_data/{train,valid,test}.txt, ../data/amazon_movie/item_info/item_cf_embeds_large3_array.npy
+
+# item language representations: OpenAI text-embedding-3-large, d_LR = 3072 (LRs from AlphaRec)
+lr_feature_file: 'item_info/item_cf_embeds_large3_array.npy'
+lm_model: v3

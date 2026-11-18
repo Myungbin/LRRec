@@ -1,0 +1,6 @@
+# Beauty -- 729,576 users / 207,649 items / 6,624,441 interactions (AlphaFree paper, Table 2)
+# files: ../data/amazon_beauty_personal/cf_data/{train,valid,test}.txt, ../data/amazon_beauty_personal/item_info/item_cf_embeds_LLAMA_array.npy
+
+# item language representations: LLaMA-3-8B last-token embedding, d_LR = 4096
+lr_feature_file: 'item_info/item_cf_embeds_LLAMA_array.npy'
+lm_model: llama

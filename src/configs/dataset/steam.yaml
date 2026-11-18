@@ -1,0 +1,6 @@
+# Steam -- 334,730 users / 15,068 items / 4,216,781 interactions (AlphaFree paper, Table 2)
+# files: ../data/steam/cf_data/{train,valid,test}.txt, ../data/steam/item_info/item_cf_embeds_LLAMA_array.npy
+
+# item language representations: LLaMA-3-8B last-token embedding, d_LR = 4096
+lr_feature_file: 'item_info/item_cf_embeds_LLAMA_array.npy'
+lm_model: llama

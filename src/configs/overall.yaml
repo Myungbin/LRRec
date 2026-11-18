@@ -1,0 +1,58 @@
+# ============================================================ general
+gpu_id: 0
+use_gpu: True
+seed: [2026]
+state: INFO
+deterministic: True      # deterministic CUDA kernels: same seed + config -> same numbers (slightly slower)
+show_progress: False     # tqdm bar per training epoch
+
+# ============================================================ data
+# AlphaFree on-disk format, read as-is: <data_path>/<dataset>/cf_data/{train,valid,test}.txt
+data_path: '../data/'
+USER_ID_FIELD: userID
+ITEM_ID_FIELD: itemID
+inter_splitting_label: 'x_label'
+filter_out_cod_start_users: False   # AlphaFree evaluates every user of the split
+
+# item language representations (file + LM are set per dataset in configs/dataset/*.yaml)
+is_lr_model: True                   # load <dataset>/<lr_feature_file> as model.lr_feat
+
+# ============================================================ model
+embedding_size: 64
+
+# ============================================================ training (AlphaFree repo protocol)
+epochs: 500
+eval_step: 5             # evaluate every 5 epochs                  (AlphaFree --verbose 5)
+stopping_step: 20        # stop after 20 evaluations w/o improvement (AlphaFree --patience 20)
+train_batch_size: 4096
+learner: adam
+learning_rate: 0.0005
+weight_decay: 0.0        # AlphaFree's optimizer has no weight decay
+learning_rate_scheduler: [1.0, 50]   # lr * a^(epoch/b); [1.0, 50] = constant
+clip_grad_norm: ~
+req_training: True
+# Training sampler
+#   user        : AlphaFree / AlphaRec -- |train interactions| samples per epoch, users visited cyclically
+#                 (each user about equally often), positive ~ uniform over the user's train items
+#   interaction : MMRec -- every training (user, item) pair once per epoch
+train_sampling: user
+# negatives per sample, uniform over all items minus the user's train items; 0 = in-batch negatives
+neg_sample_num: 1
+
+# ============================================================ evaluation
+# alphafree : valid ranks with train+test positives masked, test with train+valid masked
+#             (a positive of the evaluated split itself is never masked) -- AlphaFree/AlphaRec evaluator
+# mmrec     : only train positives masked (+ valid for test if mask_valid_for_test)
+eval_protocol: alphafree
+mask_valid_for_test: False
+metrics: ["Recall", "NDCG"]
+topk: [10, 20, 50]
+valid_metric: Recall@20
+eval_batch_size: 4096    # users per full-ranking batch
+
+save_recommended_topk: False   # True: write top-K csv for the test split (quick_eval)
+recommend_topk: 'recommend_topk/'
+
+# ============================================================ hyper-parameter grid
+# list a key here and give it a list value to sweep it (cartesian product); seed is always included
+hyper_parameters: ["seed"]
