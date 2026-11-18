@@ -14,6 +14,13 @@ ITEM_ID_FIELD: itemID
 inter_splitting_label: 'x_label'
 filter_out_cod_start_users: False   # AlphaFree evaluates every user of the split
 
+# Split. ~ = the train/valid/test files as they are (AlphaFree, about 4:3:3 by interactions).
+# [train, valid, test], e.g. [0.8, 0.1, 0.1]: merge the three files and re-split every user's interactions at
+# random in memory -- valid / test get round(share * n) items (at least 1), train keeps at least 1.
+# The files are not changed. Official AlphaFree checkpoints and the tuned dataset_params assume the file split.
+split_ratio: ~
+split_seed: 2026         # seed of the re-split; independent of the training seed, so seed sweeps share one split
+
 # item language representations (file + LM are set per dataset in configs/dataset/*.yaml)
 is_lr_model: True                   # load <dataset>/<lr_feature_file> as model.lr_feat
 

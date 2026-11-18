@@ -113,6 +113,51 @@ user id + 1, and the number of items is the largest item id + 1 (or `cf_data/n_i
 models with `is_lr_model: True`, `GeneralRecommender` loads the LR file named in `configs/dataset/<dataset>.yaml`
 as `self.lr_feat` (`n_items × d`, float32, on the GPU); this replaces MMRec's `v_feat` / `t_feat`.
 
+### Splits
+
+By default LRRec uses the split of the files (`split_ratio: ~`), which is about **4 : 3 : 3**
+(train / valid / test) by interactions, as in the AlphaFree paper.
+
+`split_ratio` re-splits the data instead, for example 8 : 1 : 1:
+
+```bash
+python main.py -m AlphaFree -d amazon_movie -g 0 --split_ratio "[0.8,0.1,0.1]"
+```
+
+The three files are merged in memory and every user's interactions are shuffled with `split_seed` (default 2026)
+and divided:
+
+- valid and test each get `round(share × n)` of the user's `n` interactions, at least 1;
+- train gets the rest, at least 1 (a user with 2 interactions gets 1 train + 1 test, valid empty).
+
+For example, a user with 5 interactions gets 3 / 1 / 1 and a user with 15 gets 11 / 2 / 2. The files have no
+timestamps, so the split is random, not temporal. `split_seed` is separate from the training `seed`, so a seed
+sweep trains every seed on the same split.
+
+The resulting shares (%) on each dataset. The re-split evaluates every user. Many users of the Amazon datasets
+and Steam have only 5 to 10 interactions, so their valid and test shares are above 10%.
+
+| Dataset | Files (`split_ratio: ~`) | `split_ratio: [0.8, 0.1, 0.1]` |
+|---|---|---|
+| Movie | 40.0 / 30.0 / 30.0 | 79.7 / 10.2 / 10.2 |
+| Book | 40.0 / 30.0 / 30.0 | 79.2 / 10.3 / 10.4 |
+| Video | 37.7 / 31.2 / 31.2 | 73.2 / 13.4 / 13.4 |
+| Baby | 37.6 / 31.2 / 31.2 | 72.8 / 13.6 / 13.6 |
+| Steam | 38.4 / 30.8 / 30.8 | 76.3 / 11.8 / 11.8 |
+| Beauty | 37.8 / 31.1 / 31.1 | 73.8 / 13.1 / 13.1 |
+| Health | 37.8 / 31.1 / 31.1 | 73.8 / 13.1 / 13.1 |
+
+Things to know when you re-split:
+
+- The official AlphaFree checkpoints and the tuned `dataset_params` belong to the file split. A checkpoint
+  trained on the file split has seen most of the re-split valid and test items, so do not evaluate it on a
+  re-split (`--eval_only` logs a warning when `split_ratio` is set).
+- The results are not comparable with the AlphaFree paper.
+- Caches that depend on the training split get the suffix `_split<train>-<valid>-<test>_seed<split_seed>`
+  (for example `preprocessed/v3_Kc5_simbraw_selfexcl0_split0.8-0.1-0.1_seed2026/`), so different splits never
+  share a cache.
+- `summary.json` records the split (`"split": "files"` or `{"ratio": [...], "seed": ...}`).
+
 ## Quick start
 
 ```bash
@@ -167,6 +212,9 @@ python main.py -m AlphaFree -d amazon_movie -g 0 --K_c "[3,5,10]" --lambda_align
 # several seeds (seed is always part of the grid)
 python main.py -m AlphaFree -d amazon_movie -g 0 --seed "[2024,2025,2026]"
 
+# re-split every user's interactions 8:1:1 instead of using the split of the files
+python main.py -m AlphaFree -d amazon_movie -g 0 --split_ratio "[0.8,0.1,0.1]"
+
 # MMRec's evaluation protocol instead of AlphaFree's
 python main.py -m LightGCN -d amazon_movie -g 0 --eval_protocol mmrec
 ```
@@ -190,6 +238,7 @@ Each process writes one directory, `src/log/<MODEL>/<dataset>/<YYYYMMDD-HHMMSS>[
 {
   "model": "AlphaFree",
   "dataset": "amazon_movie",
+  "split": "files",
   "best": {
     "params": {"seed": 2026},
     "best_epoch": 209,
@@ -225,6 +274,8 @@ Main keys of [`configs/overall.yaml`](src/configs/overall.yaml):
 | `seed` | `[2026]` | random seed(s) |
 | `deterministic` | `True` | deterministic CUDA kernels (see [Reproducibility](#reproducibility)) |
 | `data_path` | `'../data/'` | root of the datasets, relative to `src/` |
+| `split_ratio` | `~` | `~` = split of the files; `[train, valid, test]` = per-user random re-split (see [Splits](#splits)) |
+| `split_seed` | `2026` | seed of the re-split |
 | `is_lr_model` | `True` | load the item LRs as `self.lr_feat` (`False` in the ID-based model configs) |
 | `embedding_size` | `64` | output dimension of every model |
 | `epochs` | `500` | maximum number of epochs |
@@ -327,7 +378,8 @@ code. The values tuned for each dataset in the official repository are applied a
 
 The augmentation is built once per (`lm_model`, `K_c`, `sim_b`, `exclude_self`) and cached in
 `data/<dataset>/preprocessed/<lm_model>_Kc<K_c>_simb<sim_b>_selfexcl<0|1>/` (`user_interact_matrix.npz`,
-`aug_user_interact_matrix.npz`, `item_cf_embeds_augmented.npy`). The first run on Beauty or Health takes a few
+`aug_user_interact_matrix.npz`, `item_cf_embeds_augmented.npy`; with `split_ratio` the directory name gets a
+split suffix). The first run on Beauty or Health takes a few
 minutes and about 18 GB of RAM for this step. Only `mlp_origin` is used at inference. The parameter names match
 the official checkpoints, which therefore load with `strict=True`.
 

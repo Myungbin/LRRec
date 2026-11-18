@@ -13,6 +13,9 @@ Reads the AlphaFree / AlphaRec on-disk format as-is (the files are never rewritt
 
 Internally the three files become one MMRec-style interaction table ``[userID, itemID, x_label]`` with
 ``x_label`` 0/1/2 = train/valid/test, so splitting, data loaders and models work exactly as in MMRec.
+
+With ``split_ratio`` (e.g. ``[0.8, 0.1, 0.1]``) the three files are merged and every user's interactions are
+re-split at random in memory (:func:`resplit_per_user`); the files are still not touched.
 """
 
 import os
@@ -22,6 +25,66 @@ import numpy as np
 import pandas as pd
 
 SPLIT_FILES = ("train.txt", "valid.txt", "test.txt")
+
+
+def split_ratio(config):
+    """``split_ratio`` normalized to sum 1 as a (train, valid, test) tuple, or None for the split of the files."""
+    ratio = config["split_ratio"]
+    if ratio is None:
+        return None
+    if not isinstance(ratio, (list, tuple)) or len(ratio) != 3:
+        raise ValueError("split_ratio must be ~ or a list [train, valid, test], e.g. [0.8, 0.1, 0.1]")
+    ratio = np.asarray(ratio, dtype=np.float64)
+    if (ratio < 0).any() or ratio[0] <= 0:
+        raise ValueError("split_ratio needs a positive train share and non-negative valid / test shares")
+    return tuple(float(r) for r in ratio / ratio.sum())
+
+
+def split_tag(config):
+    """'' for the split of the files, else '_split<train>-<valid>-<test>_seed<split_seed>'. Part of the name of
+    every cache derived from the training split, so caches of different splits never mix."""
+    ratio = split_ratio(config)
+    if ratio is None:
+        return ""
+    return "_split{}_seed{}".format("-".join(f"{r:g}" for r in ratio), int(config["split_seed"]))
+
+
+def _quota(share, counts):
+    """Items per user for a valid/test share: round-half-up(share * n), at least 1 if share > 0."""
+    if share <= 0:
+        return np.zeros_like(counts)
+    return np.maximum(np.floor(share * counts + 0.5 + 1e-9).astype(np.int64), 1)
+
+
+def resplit_per_user(users, ratio, seed):
+    """New split label (0/1/2 = train/valid/test) for every row of ``users``.
+
+    Each user's interactions are shuffled (``numpy.random.default_rng(seed)``) and the first
+    ``round(ratio_test * n)`` go to test, the next ``round(ratio_valid * n)`` to valid and the rest to train.
+    valid and test get at least one item when their share is > 0; train always keeps at least one, so a user
+    with 2 interactions gets 1 train + 1 test and a user with 1 interaction is train only.
+    """
+    users = np.asarray(users)
+    n_rows = len(users)
+    rng = np.random.default_rng(seed)
+    order = np.lexsort((rng.random(n_rows), users))  # grouped by user, random order inside each user
+    sorted_users = users[order]
+    starts = np.r_[0, np.flatnonzero(np.diff(sorted_users)) + 1]
+    counts = np.diff(np.r_[starts, n_rows])
+
+    k_test = _quota(ratio[2], counts)
+    k_valid = _quota(ratio[1], counts)
+    over = np.maximum(k_test + k_valid - (counts - 1), 0)  # keep >= 1 train item: shrink valid first, then test
+    cut = np.minimum(over, k_valid)
+    k_valid -= cut
+    k_test -= np.minimum(over - cut, k_test)
+
+    rank = np.arange(n_rows) - np.repeat(starts, counts)
+    k_test_row, k_valid_row = np.repeat(k_test, counts), np.repeat(k_valid, counts)
+    labels_sorted = np.where(rank < k_test_row, 2, np.where(rank < k_test_row + k_valid_row, 1, 0))
+    labels = np.empty(n_rows, dtype=np.int8)
+    labels[order] = labels_sorted
+    return labels
 
 
 def read_user_item_lists(path):
@@ -83,6 +146,18 @@ class RecDataset(object):
                 )
             )
         self.df = pd.concat(frames, ignore_index=True)
+
+        ratio = split_ratio(self.config)
+        if ratio is not None:
+            seed = int(self.config["split_seed"])
+            self.df[self.splitting_label] = resplit_per_user(self.df[self.uid_field].values, ratio, seed)
+            sizes = np.bincount(self.df[self.splitting_label].values, minlength=3)
+            self.logger.info(
+                "Re-split per user: split_ratio={} split_seed={} -> train/valid/test = {}/{}/{} ({})".format(
+                    "/".join(f"{r:g}" for r in ratio), seed, *sizes,
+                    "/".join(f"{100 * s / sizes.sum():.1f}%" for s in sizes),
+                )
+            )
 
     def split(self):
         dfs = []

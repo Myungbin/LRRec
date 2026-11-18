@@ -33,7 +33,9 @@ Datasets: `amazon_movie`, `amazon_book_2014`, `amazon_video`, `amazon_baby`, `st
 `EvalDataLoader`s -> for each hyper-parameter combination: `get_model()` -> `Trainer.fit()`.
 
 - **Data** (`utils/dataset.py`): reads `cf_data/{train,valid,test}.txt` ("user item item ..." lines) into one
-  table `[userID, itemID, x_label]`. Never rewrite the files on disk.
+  table `[userID, itemID, x_label]`. Never rewrite the files on disk. `split_ratio: ~` (default) keeps the file
+  split (~4:3:3); `split_ratio: [0.8,0.1,0.1]` re-splits every user at random in memory (`split_seed`). Any cache
+  derived from the training split must put `split_tag(config)` in its name (as AlphaFree's augmentation does).
 - **Config** (`utils/configurator.py`): `configs/overall.yaml` < `configs/dataset/<ds>.yaml` <
   `configs/model/<MODEL>.yaml` < `dataset_params[<ds>]` in the model yaml < CLI. Values via `config['key']`
   (missing -> None). Hyper-parameter grid = keys in `hyper_parameters` with list values; best combo picked on

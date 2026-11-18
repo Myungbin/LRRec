@@ -16,7 +16,7 @@ import torch
 
 from utils.configurator import Config
 from utils.dataloader import EvalDataLoader, TrainDataLoader
-from utils.dataset import RecDataset
+from utils.dataset import RecDataset, split_ratio
 from utils.logger import init_logger
 from utils.utils import dict2str, get_model, get_trainer, init_seed
 
@@ -144,7 +144,10 @@ def _write_summary(log_dir, config, hyper_ret, best_idx):
         {"params": dict(zip(config["hyper_parameters"], map(_jsonable, p))), "best_epoch": e, "valid": k, "test": v}
         for p, k, v, e in hyper_ret
     ]
-    summary = {"model": config["model"], "dataset": config["dataset"], "best": runs[best_idx], "runs": runs}
+    ratio = split_ratio(config)
+    split = "files" if ratio is None else {"ratio": list(ratio), "seed": int(config["split_seed"])}
+    summary = {"model": config["model"], "dataset": config["dataset"], "split": split,
+               "best": runs[best_idx], "runs": runs}
     with open(os.path.join(log_dir, "summary.json"), "w") as f:
         json.dump(summary, f, indent=2)
 
@@ -168,6 +171,12 @@ def quick_eval(model, dataset, config_dict, model_path):
         state = state["state_dict"]
     model_obj.load_state_dict(state)
     logger.info(f"Loaded {model_path}")
+    if split_ratio(config) is not None:
+        logger.warning(
+            "split_ratio is set: the checkpoint must have been trained with the same split_ratio and split_seed. "
+            "Official AlphaFree checkpoints were trained on the file split (split_ratio: ~) and have seen the "
+            "re-split valid/test items."
+        )
     trainer = get_trainer()(config, model_obj)
     valid_result = trainer.evaluate(valid_data)
     test_result = trainer.evaluate(test_data, is_test=True)

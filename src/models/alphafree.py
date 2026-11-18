@@ -23,7 +23,8 @@ Only MLP (``mlp_origin``) is used at inference. Parameter names match the offici
 
 The augmentation (R, R+, z+) is built once and cached under
 ``<data_path>/<dataset>/preprocessed/<lm_model>_Kc<K_c>_simb<sim_b>_selfexcl<0|1>/`` (same layout as the
-AlphaFree research repo, so caches are interchangeable).
+AlphaFree research repo, so caches are interchangeable). With ``split_ratio`` the directory name also gets
+``_split<train>-<valid>-<test>_seed<split_seed>``, because the augmentation depends on the training split.
 """
 
 import os
@@ -37,6 +38,7 @@ import torch.nn.functional as F
 from sklearn.preprocessing import normalize
 
 from common.abstract_recommender import GeneralRecommender, load_lr_feature, lr_mlp_hidden
+from utils.dataset import split_tag
 from utils.utils import csr_to_torch, gather_csr_rows
 
 
@@ -72,7 +74,9 @@ class AlphaFree(GeneralRecommender):
 
     # ------------------------------------------------------------------------------ augmentation
     def _load_or_build_augmentation(self, config, dataloader):
-        cache_key = "{}_Kc{}_simb{}_selfexcl{}".format(self.lm_model, self.K_c, self.sim_b, int(self.exclude_self))
+        cache_key = "{}_Kc{}_simb{}_selfexcl{}{}".format(
+            self.lm_model, self.K_c, self.sim_b, int(self.exclude_self), split_tag(config)
+        )
         cache_dir = os.path.join(os.path.abspath(config["data_path"] + config["dataset"]), "preprocessed", cache_key)
         files = ["user_interact_matrix.npz", "aug_user_interact_matrix.npz", "item_cf_embeds_augmented.npy"]
         if all(os.path.isfile(os.path.join(cache_dir, f)) for f in files):
