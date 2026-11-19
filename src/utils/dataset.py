@@ -1,7 +1,4 @@
-# coding: utf-8
-"""
-Dataset
-##########################
+"""Dataset.
 
 Reads the AlphaFree / AlphaRec on-disk format as-is (the files are never rewritten)::
 
@@ -154,7 +151,9 @@ class RecDataset(object):
             sizes = np.bincount(self.df[self.splitting_label].values, minlength=3)
             self.logger.info(
                 "Re-split per user: split_ratio={} split_seed={} -> train/valid/test = {}/{}/{} ({})".format(
-                    "/".join(f"{r:g}" for r in ratio), seed, *sizes,
+                    "/".join(f"{r:g}" for r in ratio),
+                    seed,
+                    *sizes,
                     "/".join(f"{100 * s / sizes.sum():.1f}%" for s in sizes),
                 )
             )
@@ -166,7 +165,6 @@ class RecDataset(object):
             temp_df.drop(self.splitting_label, inplace=True, axis=1)
             dfs.append(temp_df.reset_index(drop=True))
         if self.config["filter_out_cod_start_users"]:
-            # drop valid/test users that have no training interaction
             train_u = set(dfs[0][self.uid_field].values)
             for i in [1, 2]:
                 dfs[i] = dfs[i][dfs[i][self.uid_field].isin(train_u)].reset_index(drop=True)

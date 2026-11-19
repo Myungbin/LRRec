@@ -1,7 +1,5 @@
-# coding: utf-8
-r"""
-SimGCL (ID-based baseline)
-################################################
+"""SimGCL (ID-based baseline).
+
 Reference:
     Junliang Yu, Hongzhi Yin, Xin Xia, Tong Chen, Lizhen Cui, Quoc Viet Hung Nguyen.
     "Are Graph Augmentations Necessary? Simple Graph Contrastive Learning for Recommendation." SIGIR 2022.
@@ -83,11 +81,12 @@ class SimGCL(GeneralRecommender):
         uu, ui = torch.unique(users), torch.unique(pos)
         cl = self._info_nce(user_v1[uu], user_v2[uu]) + self._info_nce(item_v1[ui], item_v2[ui])
 
-        reg = 0.5 * (
+        l2 = (
             self.user_embedding(users).pow(2).sum()
             + self.item_embedding(pos).pow(2).sum()
             + self.item_embedding(neg).pow(2).sum()
-        ) / users.shape[0]
+        )
+        reg = 0.5 * l2 / users.shape[0]
         return bpr + self.lambda_cl * cl + self.reg_weight * reg
 
     def train(self, mode=True):

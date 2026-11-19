@@ -1,7 +1,5 @@
-# coding: utf-8
-r"""
-AlphaRec
-################################################
+"""AlphaRec.
+
 Reference:
     Leheng Sheng, An Zhang, Yi Zhang, Yuxin Chen, Xiang Wang, Tat-Seng Chua.
     "Language Representations Can be What Recommenders Need: Findings and Potentials." ICLR 2025.

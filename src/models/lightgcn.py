@@ -1,7 +1,5 @@
-# coding: utf-8
-r"""
-LightGCN (ID-based baseline)
-################################################
+"""LightGCN (ID-based baseline).
+
 Reference:
     Xiangnan He, Kuan Deng, Xiang Wang, Yan Li, Yongdong Zhang, Meng Wang.
     "LightGCN: Simplifying and Powering Graph Convolution Network for Recommendation." SIGIR 2020.
@@ -54,11 +52,12 @@ class LightGCN(GeneralRecommender):
         user_e, item_e = self.forward()
         u, p, n = user_e[users], item_e[pos], item_e[neg]
         bpr = F.softplus((u * n).sum(-1) - (u * p).sum(-1)).mean()
-        reg = 0.5 * (
+        l2 = (
             self.user_embedding(users).pow(2).sum()
             + self.item_embedding(pos).pow(2).sum()
             + self.item_embedding(neg).pow(2).sum()
-        ) / users.shape[0]
+        )
+        reg = 0.5 * l2 / users.shape[0]
         return bpr + self.reg_weight * reg
 
     def train(self, mode=True):

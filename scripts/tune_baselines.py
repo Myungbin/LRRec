@@ -49,7 +49,6 @@ MODEL_COST = {"MF": 1.0, "LightGCN": 3.0, "SimGCL": 1.5, "XSimGCL": 1.0}
 STAGES_LEFT = {"SimGCL": 3, "XSimGCL": 2}  # staged models go first: their later stages wait for the first one
 
 
-# ------------------------------------------------------------------------------------------- search spaces
 def first_stage(model):
     if model == "MF":
         return [{"reg_weight": r} for r in REGS]
@@ -78,7 +77,6 @@ def next_stage(model, stage, best):
     return None
 
 
-# ------------------------------------------------------------------------------------------- runs
 def tag_of(name, params):
     return name + "_" + "_".join(f"{k}{v:g}" if isinstance(v, float) else f"{k}{v}" for k, v in params.items())
 
@@ -101,8 +99,22 @@ class Job:
         self.cost = DATASET_COST.get(dataset, 1.0) * MODEL_COST[model] * STAGES_LEFT.get(model, 1)
 
     def command(self, gpu, seed, deterministic):
-        cmd = [sys.executable, "main.py", "-m", self.model, "-d", self.dataset, "-g", str(gpu),
-               "--tag", self.tag, "--seed", str(seed), "--deterministic", str(bool(deterministic))]
+        cmd = [
+            sys.executable,
+            "main.py",
+            "-m",
+            self.model,
+            "-d",
+            self.dataset,
+            "-g",
+            str(gpu),
+            "--tag",
+            self.tag,
+            "--seed",
+            str(seed),
+            "--deterministic",
+            str(bool(deterministic)),
+        ]
         for k, v in self.params.items():
             cmd += [f"--{k}", str(v)]
         return cmd
@@ -162,8 +174,9 @@ def run(args):
     out_dir = os.path.join(SRC, "log", "tuning", args.name)
     os.makedirs(os.path.join(out_dir, "jobs"), exist_ok=True)
     searches = {(m, d): Search(args.name, m, d) for m in args.models for d in args.datasets}
-    pending = deque(sorted((j for s in searches.values() for j in s.start(first_stage(s.model))),
-                           key=lambda j: -j.cost))
+    pending = deque(
+        sorted((j for s in searches.values() for j in s.start(first_stage(s.model))), key=lambda j: -j.cost)
+    )
     if args.dry_run:
         for j in pending:
             print(j.model, j.dataset, j.tag)
@@ -183,8 +196,19 @@ def run(args):
 
     def complete(job, result):
         with open(os.path.join(out_dir, "results.jsonl"), "a") as f:
-            f.write(json.dumps({"model": job.model, "dataset": job.dataset, "params": job.params,
-                                "stage": job.stage, "tag": job.tag, "result": result}) + "\n")
+            f.write(
+                json.dumps(
+                    {
+                        "model": job.model,
+                        "dataset": job.dataset,
+                        "params": job.params,
+                        "stage": job.stage,
+                        "tag": job.tag,
+                        "result": result,
+                    }
+                )
+                + "\n"
+            )
         follow = searches[(job.model, job.dataset)].finish(job, result)
         for j in reversed(follow):  # next stages jump the queue
             pending.appendleft(j)
@@ -207,10 +231,14 @@ def run(args):
             pending.popleft()
             free[gpu] -= 1
             logfile = open(os.path.join(out_dir, "jobs", f"{job.model}_{job.dataset}_{job.tag}.out"), "w")
-            proc = subprocess.Popen(job.command(gpu, args.seed, args.deterministic), cwd=SRC, env=env, stdout=logfile,
-                                    stderr=subprocess.STDOUT)
+            proc = subprocess.Popen(
+                job.command(gpu, args.seed, args.deterministic),
+                cwd=SRC,
+                env=env,
+                stdout=logfile,
+                stderr=subprocess.STDOUT,
+            )
             running.append((proc, job, gpu, logfile))
-        # collect
         still = []
         for proc, job, gpu, logfile in running:
             if proc.poll() is None:
@@ -222,8 +250,10 @@ def run(args):
             if result is None:
                 note(f"FAILED (exit {proc.returncode}) {job.model} {job.dataset} {job.tag}: see {logfile.name}")
             else:
-                note(f"done {job.model} {job.dataset} {job.tag}: valid {result['valid'][METRIC]:.4f} "
-                     f"test {result['test'][METRIC]:.4f} (epoch {result['best_epoch']})")
+                note(
+                    f"done {job.model} {job.dataset} {job.tag}: valid {result['valid'][METRIC]:.4f} "
+                    f"test {result['test'][METRIC]:.4f} (epoch {result['best_epoch']})"
+                )
             complete(job, result)
         running = still
         if running or pending:
@@ -246,12 +276,16 @@ def report(args, searches=None):
                     best = (v, s, path)
             if best:
                 rows.append((m, d, best[1], os.path.dirname(best[2])))
-    lines = ["| Model | Dataset | Best configuration | Best epoch | Valid R@20 | Test R@20 | Test N@20 |",
-             "|---|---|---|--:|--:|--:|--:|"]
+    lines = [
+        "| Model | Dataset | Best configuration | Best epoch | Valid R@20 | Test R@20 | Test N@20 |",
+        "|---|---|---|--:|--:|--:|--:|",
+    ]
     for m, d, s, path in rows:
         params = ", ".join(f"{k}={v}" for k, v in s.get("overrides", {}).items() if k != "seed")
-        lines.append(f"| {m} | {d} | {params} | {s['best']['best_epoch']} | {s['best']['valid']['recall@20']:.4f} | "
-                     f"{s['best']['test']['recall@20']:.4f} | {s['best']['test']['ndcg@20']:.4f} |")
+        lines.append(
+            f"| {m} | {d} | {params} | {s['best']['best_epoch']} | {s['best']['valid']['recall@20']:.4f} | "
+            f"{s['best']['test']['recall@20']:.4f} | {s['best']['test']['ndcg@20']:.4f} |"
+        )
     text = "\n".join(lines)
     print(text)
     out_dir = os.path.join(SRC, "log", "tuning", args.name)
@@ -268,8 +302,11 @@ if __name__ == "__main__":
     parser.add_argument("--gpus", default="0:1", help="gpu:slots,... e.g. 0:6,1:6,2:3")
     parser.add_argument("--seed", type=int, default=2026)
     parser.add_argument("--threads", type=int, default=4, help="CPU threads per job")
-    parser.add_argument("--deterministic", action="store_true",
-                        help="bit-for-bit repeatable runs; the graph models are about 2.5x slower")
+    parser.add_argument(
+        "--deterministic",
+        action="store_true",
+        help="bit-for-bit repeatable runs; the graph models are about 2.5x slower",
+    )
     parser.add_argument("--poll", type=float, default=15.0, help="seconds between checks")
     parser.add_argument("--dry_run", action="store_true")
     parser.add_argument("--report", action="store_true")

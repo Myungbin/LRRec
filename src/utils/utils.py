@@ -1,9 +1,3 @@
-# coding: utf-8
-"""
-Utility functions
-##########################
-"""
-
 import importlib
 import os
 import random
@@ -13,7 +7,6 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 import scipy.sparse as sp
 import torch
-
 
 KST = timezone(timedelta(hours=9))
 
@@ -98,7 +91,6 @@ def dict2str(result_dict):
     return "    ".join(f"{metric}: {value:.4f}" for metric, value in result_dict.items())
 
 
-# ---------------------------------------------------------------------------------------- graphs
 def scipy_to_torch_sparse(mat):
     """scipy sparse matrix -> coalesced torch sparse COO (float32, on CPU)."""
     mat = sp.coo_matrix(mat)

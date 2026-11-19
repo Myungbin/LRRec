@@ -1,7 +1,5 @@
-# coding: utf-8
-"""
-Top-K evaluator
-################################
+"""Top-K evaluator.
+
 User-averaged top-K metrics (MMRec ``utils/metrics.py``). Recall@K = hits@K / |ground truth|,
 NDCG@K with IDCG over min(|ground truth|, K) -- the same definitions as the AlphaFree / AlphaRec C++ evaluator.
 """
@@ -55,7 +53,9 @@ class TopKEvaluator(object):
         os.makedirs(dir_name, exist_ok=True)
         file_path = os.path.join(
             dir_name,
-            "{}-{}-idx{}-top{}-{}.csv".format(self.config["model"], self.config["dataset"], idx, max_k, get_local_time()),
+            "{}-{}-idx{}-top{}-{}.csv".format(
+                self.config["model"], self.config["dataset"], idx, max_k, get_local_time()
+            ),
         )
         x_df = pd.DataFrame(topk_index)
         x_df.insert(0, "id", eval_data.get_eval_users().numpy())
@@ -78,7 +78,9 @@ class TopKEvaluator(object):
             raise TypeError("The topk must be a integer, list")
         for topk in self.topk:
             if topk <= 0:
-                raise ValueError("topk must be a positive integer or a list of positive integers, but get `{}`".format(topk))
+                raise ValueError(
+                    "topk must be a positive integer or a list of positive integers, but get `{}`".format(topk)
+                )
 
     def _calculate_metrics(self, pos_len_list, topk_index):
         result_list = []

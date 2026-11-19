@@ -12,6 +12,10 @@ github.com/Minseojeonn/AlphaFree). All code lives under `src/`; run everything f
 No test suite or linter. Correctness is checked by (1) `--eval_only` on the official AlphaFree checkpoints
 (`../data/pretrained/<dataset>.pth.tar`; Movie test R@20 must be 0.1263, Video 0.1114) and (2) training runs.
 
+Formatting: `black src scripts && isort src scripts` from the repo root (120 columns, config in `pyproject.toml`).
+Comments only where they say *why* (deviations from the official code, non-obvious encodings); no section banners,
+`# coding` headers or docstrings that restate the code.
+
 ## Commands
 
 ```bash

@@ -1,7 +1,4 @@
-# coding: utf-8
-"""
-Main entry (run from LRRec/src)
-##########################
+"""Main entry (run from LRRec/src).
 
     python main.py -m AlphaFree -d amazon_movie -g 0
     python main.py -m AlphaFree -d amazon_movie --tau_r 0.2 --K_c "[5,10]" --hyper_parameters "[K_c]"
@@ -17,7 +14,7 @@ import os
 os.environ.setdefault("NUMEXPR_MAX_THREADS", str(os.cpu_count()))
 os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")  # needed by deterministic cuBLAS (config: deterministic)
 
-from utils.configurator import load_yaml  # noqa: E402  (same YAML rules as the config files: 1e-3 is a float)
+from utils.configurator import load_yaml  # noqa: E402
 
 
 def parse_overrides(unknown):
@@ -45,8 +42,13 @@ if __name__ == "__main__":
     parser.add_argument("--dataset", "-d", type=str, default="amazon_movie", help="name of datasets")
     parser.add_argument("--gpu_id", "-g", type=int, default=0, help="GPU device id")
     parser.add_argument("--save_model", "-s", action="store_true", help="save the best checkpoint in the log dir")
-    parser.add_argument("--tag", "-t", type=str, default=None,
-                        help="optional run tag appended to the log dir: log/<model>/<dataset>/<time>_<tag>/")
+    parser.add_argument(
+        "--tag",
+        "-t",
+        type=str,
+        default=None,
+        help="optional run tag appended to the log dir: log/<model>/<dataset>/<time>_<tag>/",
+    )
     parser.add_argument("--eval_only", action="store_true", help="evaluate --model_path without training")
     parser.add_argument("--model_path", type=str, default=None, help="checkpoint for --eval_only")
     args, unknown = parser.parse_known_args()

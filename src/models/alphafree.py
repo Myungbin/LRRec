@@ -1,7 +1,5 @@
-# coding: utf-8
-r"""
-AlphaFree
-################################################
+"""AlphaFree.
+
 Reference:
     Minseo Jeon, Junwoo Jung, Daewon Gwak, Jinhong Jung.
     "AlphaFree: Recommendation Free from Users, IDs, and GNNs." WWW 2026.
@@ -54,7 +52,7 @@ class AlphaFree(GeneralRecommender):
         self.K_c = config["K_c"]
         self.sim_b = config["sim_b"] or "raw"
         self.exclude_self = bool(config["exclude_self"])
-        self.aug_mode = config["aug_mode"] or "both"  # both | inter | rep | none (ablation)
+        self.aug_mode = config["aug_mode"] or "both"
         if self.aug_mode not in ("both", "inter", "rep", "none"):
             raise ValueError("aug_mode must be one of both / inter / rep / none")
 
@@ -72,7 +70,6 @@ class AlphaFree(GeneralRecommender):
 
         self._item_cache = None  # mlp_origin(Z) during evaluation
 
-    # ------------------------------------------------------------------------------ augmentation
     def _load_or_build_augmentation(self, config, dataloader):
         cache_key = "{}_Kc{}_simb{}_selfexcl{}{}".format(
             self.lm_model, self.K_c, self.sim_b, int(self.exclude_self), split_tag(config)
@@ -85,8 +82,10 @@ class AlphaFree(GeneralRecommender):
             R_aug = sp.load_npz(os.path.join(cache_dir, files[1])).tocsr()
             z_aug = np.load(os.path.join(cache_dir, files[2]))
         else:
-            self.logger.info(f"AlphaFree: building augmentation (K_c={self.K_c}, sim_b={self.sim_b}, "
-                             f"exclude_self={self.exclude_self}) -> {cache_dir}")
+            self.logger.info(
+                f"AlphaFree: building augmentation (K_c={self.K_c}, sim_b={self.sim_b}, "
+                f"exclude_self={self.exclude_self}) -> {cache_dir}"
+            )
             R, R_aug, z_aug = build_augmentation(
                 dataloader.inter_matrix(form="csr"),
                 load_lr_feature(config),
@@ -103,7 +102,6 @@ class AlphaFree(GeneralRecommender):
             raise ValueError(f"augmentation in {cache_dir} does not match the dataset size")
         return R, R_aug, z_aug
 
-    # ------------------------------------------------------------------------------ encoders
     def _pool(self, csr, users):
         """sum_i R_ui z_i for each user (embedding_bag: deterministic, unlike cuSPARSE SpMM)."""
         cols, vals, offsets = gather_csr_rows(*csr, users)
@@ -117,7 +115,6 @@ class AlphaFree(GeneralRecommender):
         item_lr = self.Z_aug if self.aug_mode in ("both", "rep") else self.Z
         return self.mlp_aug(self._pool(user_csr, users)), self.mlp_aug(item_lr)
 
-    # ------------------------------------------------------------------------------ losses
     def _infonce(self, u, items, pos, neg):
         u = F.normalize(u, dim=-1)
         p = F.normalize(items[pos], dim=-1)
@@ -150,7 +147,6 @@ class AlphaFree(GeneralRecommender):
         loss_align = self._align(u_o, u_a) + self._align(items_o[pos], items_a[pos])
         return loss_origin + loss_aug + self.lambda_align * loss_align
 
-    # ------------------------------------------------------------------------------ inference
     def train(self, mode=True):
         self._item_cache = None
         return super().train(mode)
@@ -163,7 +159,6 @@ class AlphaFree(GeneralRecommender):
         return u @ self._item_cache.T
 
 
-# ------------------------------------------------------------------------------------------ preprocessing
 def build_augmentation(train_csr, z, K_c, sim_b="raw", exclude_self=False, device="cpu", batch_size=1024):
     """AlphaFree preprocessing (Algorithm 1 of the paper; ``AlphaFreeData`` in the official code).
 

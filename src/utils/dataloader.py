@@ -1,7 +1,4 @@
-# coding: utf-8
-"""
-Wrap dataset into dataloader
-################################################
+"""Data loaders.
 
 Same interface as MMRec (``inter_matrix()``, ``pretrain_setup()``, iteration yields an ``interaction``),
 with sampling vectorised on the device so that hundreds of negatives per sample stay cheap.
@@ -80,8 +77,9 @@ class TrainDataLoader(AbstractDataLoader):
     """
 
     def __init__(self, config, dataset, batch_size=1, shuffle=False):
-        super().__init__(config, dataset, additional_dataset=None, batch_size=batch_size, neg_sampling=True,
-                         shuffle=shuffle)
+        super().__init__(
+            config, dataset, additional_dataset=None, batch_size=batch_size, neg_sampling=True, shuffle=shuffle
+        )
         self.n_users = dataset.get_user_num()
         self.n_items = dataset.get_item_num()
         self.sampling = (config["train_sampling"] or "user").lower()
@@ -109,7 +107,6 @@ class TrainDataLoader(AbstractDataLoader):
         self.perm = None
         self.pretrain_setup()
 
-    # ----------------------------------------------------------------------------------- setup
     def pretrain_setup(self):
         """Re-seed the sampler; called before every hyper-parameter combination for reproducibility."""
         seed = self.config["seed"]
@@ -120,7 +117,6 @@ class TrainDataLoader(AbstractDataLoader):
         self.pr = 0
 
     def inter_matrix(self, form="coo", value_field=None):
-        """Training user x item interaction matrix (scipy), as in MMRec."""
         return self._create_sparse_matrix(
             self.dataset.df, self.dataset.uid_field, self.dataset.iid_field, form, value_field
         )
@@ -141,11 +137,10 @@ class TrainDataLoader(AbstractDataLoader):
             return mat.tocsr()
         raise NotImplementedError("sparse matrix format [{}] has not been implemented.".format(form))
 
-    # ------------------------------------------------------------------------------- iteration
     @property
     def pr_end(self):
         if self.sampling == "user":
-            return (self.n_obs // self.step) * self.step  # drop_last
+            return (self.n_obs // self.step) * self.step
         return self.n_obs
 
     def __len__(self):
@@ -200,13 +195,14 @@ class EvalDataLoader(AbstractDataLoader):
     """
 
     def __init__(self, config, dataset, mask_datasets, batch_size=1, exclude_eval_positives=True):
-        super().__init__(config, dataset, additional_dataset=None, batch_size=batch_size, neg_sampling=False,
-                         shuffle=False)
+        super().__init__(
+            config, dataset, additional_dataset=None, batch_size=batch_size, neg_sampling=False, shuffle=False
+        )
         uid, iid = dataset.uid_field, dataset.iid_field
         self.n_items = dataset.get_item_num()
 
         eval_df = dataset.df[[uid, iid]].drop_duplicates()
-        self.eval_u_np = pd.unique(eval_df[uid].values)  # file order
+        self.eval_u_np = pd.unique(eval_df[uid].values)
         row_of = pd.Series(np.arange(len(self.eval_u_np)), index=self.eval_u_np)
 
         # ground truth, as sorted (row * n_items + item) keys
@@ -215,7 +211,6 @@ class EvalDataLoader(AbstractDataLoader):
         self.eval_len_list = np.bincount(gt_rows, minlength=len(self.eval_u_np))
         self.gt_keys = torch.from_numpy(np.unique(gt_rows * self.n_items + gt_items)).to(self.device)
 
-        # mask pairs restricted to evaluated users
         mask_df = pd.concat([d.df[[uid, iid]] for d in mask_datasets], ignore_index=True).drop_duplicates()
         mask_df = mask_df[mask_df[uid].isin(row_of.index)]
         m_rows = row_of.loc[mask_df[uid].values].values.astype(np.int64)

@@ -1,7 +1,5 @@
-# coding: utf-8
-r"""
-Trainer
-################################
+"""Trainer.
+
 Epoch loop with validation-based early stopping. Test metrics are logged at every evaluation and the
 reported test result is the one at the best validation epoch.
 """

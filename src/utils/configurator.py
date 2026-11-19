@@ -1,7 +1,4 @@
-# coding: utf-8
-"""
-Hierarchical configuration
-################################
+"""Hierarchical configuration.
 
 Priority (later wins):
 
@@ -77,7 +74,6 @@ class Config(object):
                     hyper_parameters.extend(fdata["hyper_parameters"])
                 dataset_params = fdata.pop("dataset_params", None) or dataset_params
                 file_config_dict.update(fdata)
-        # per-dataset overrides declared inside the model yaml
         file_config_dict.update(dataset_params.get(config_dict["dataset"], {}) or {})
         file_config_dict["hyper_parameters"] = hyper_parameters
         return file_config_dict

@@ -1,9 +1,4 @@
-# coding: utf-8
-"""
-Run application
-##########################
-main.py -> quick_start(): Config -> RecDataset -> loaders -> (for every hyper-parameter combination) model -> Trainer.fit
-"""
+"""main.py -> quick_start(): Config -> RecDataset -> loaders -> (per hyper-parameter combination) model -> Trainer.fit"""
 
 import gc
 import json
@@ -41,8 +36,10 @@ def build_loaders(config, logger):
         valid_mask, test_mask, exclude = [train_dataset], [train_dataset], False
         if config["mask_valid_for_test"]:
             test_mask = [train_dataset, valid_dataset]
-        logger.info("Eval protocol: mmrec (train positives masked%s)"
-                    % (", + valid for test" if config["mask_valid_for_test"] else ""))
+        logger.info(
+            "Eval protocol: mmrec (train positives masked%s)"
+            % (", + valid for test" if config["mask_valid_for_test"] else "")
+        )
     else:
         raise ValueError("eval_protocol must be 'alphafree' or 'mmrec'")
 
@@ -83,7 +80,9 @@ def quick_start(model, dataset, config_dict, save_model=True):
             config[name] = value
         init_seed(config["seed"], config["deterministic"])
         logger.info(
-            "========={}/{}: Parameters:{}={}=======".format(idx + 1, total_loops, config["hyper_parameters"], hyper_tuple)
+            "========={}/{}: Parameters:{}={}=======".format(
+                idx + 1, total_loops, config["hyper_parameters"], hyper_tuple
+            )
         )
 
         train_data.pretrain_setup()
@@ -147,8 +146,14 @@ def _write_summary(log_dir, config, hyper_ret, best_idx, config_dict=None):
     ratio = split_ratio(config)
     split = "files" if ratio is None else {"ratio": list(ratio), "seed": int(config["split_seed"])}
     overrides = {k: _jsonable(v) for k, v in (config_dict or {}).items() if k not in ("gpu_id", "log_tag")}
-    summary = {"model": config["model"], "dataset": config["dataset"], "split": split, "overrides": overrides,
-               "best": runs[best_idx], "runs": runs}
+    summary = {
+        "model": config["model"],
+        "dataset": config["dataset"],
+        "split": split,
+        "overrides": overrides,
+        "best": runs[best_idx],
+        "runs": runs,
+    }
     with open(os.path.join(log_dir, "summary.json"), "w") as f:
         json.dump(summary, f, indent=2)
 

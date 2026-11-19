@@ -1,7 +1,5 @@
-# coding: utf-8
-r"""
-MF (MF-BPR, ID-based baseline)
-################################################
+"""MF (MF-BPR, ID-based baseline).
+
 Reference:
     Steffen Rendle, Christoph Freudenthaler, Zeno Gantner, Lars Schmidt-Thieme.
     "BPR: Bayesian Personalized Ranking from Implicit Feedback." UAI 2009.

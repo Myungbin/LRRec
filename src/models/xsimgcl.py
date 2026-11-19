@@ -1,7 +1,5 @@
-# coding: utf-8
-r"""
-XSimGCL (ID-based baseline)
-################################################
+"""XSimGCL (ID-based baseline).
+
 Reference:
     Junliang Yu, Xin Xia, Tong Chen, Lizhen Cui, Nguyen Quoc Viet Hung, Hongzhi Yin.
     "XSimGCL: Towards Extremely Simple Graph Contrastive Learning for Recommendation." TKDE 2023.
@@ -79,11 +77,12 @@ class XSimGCL(GeneralRecommender):
         bpr = F.softplus((u * n).sum(-1) - (u * p).sum(-1)).mean()
         uu, ui = torch.unique(users), torch.unique(pos)
         cl = self._info_nce(user_e[uu], cl_user[uu]) + self._info_nce(item_e[ui], cl_item[ui])
-        reg = 0.5 * (
+        l2 = (
             self.user_embedding(users).pow(2).sum()
             + self.item_embedding(pos).pow(2).sum()
             + self.item_embedding(neg).pow(2).sum()
-        ) / users.shape[0]
+        )
+        reg = 0.5 * l2 / users.shape[0]
         return bpr + self.lambda_cl * cl + self.reg_weight * reg
 
     def train(self, mode=True):

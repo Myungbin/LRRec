@@ -1,7 +1,5 @@
-# coding: utf-8
-"""
-Base recommenders
-################################
+"""Base recommenders.
+
 Every model subclasses :class:`GeneralRecommender` and implements
 
     __init__(self, config, dataloader)
@@ -31,12 +29,10 @@ def load_lr_feature(config):
     path = os.path.join(os.path.abspath(config["data_path"] + config["dataset"]), config["lr_feature_file"])
     if not os.path.isfile(path):
         raise FileNotFoundError(f"item language representations not found: {path}")
-    return np.load(path)  # allow_pickle=False
+    return np.load(path)
 
 
 class AbstractRecommender(nn.Module):
-    r"""Base class for all models"""
-
     def pre_epoch_processing(self):
         pass
 

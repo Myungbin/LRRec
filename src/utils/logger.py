@@ -1,7 +1,4 @@
-# coding: utf-8
-"""
-Logging: stdout + ./log/<model>/<dataset>/<time>/<model>-<dataset>.log, plus a snapshot of the model file.
-"""
+"""Logging: stdout + ./log/<model>/<dataset>/<time>/<model>-<dataset>.log, plus a snapshot of the model file."""
 
 import logging
 import os
