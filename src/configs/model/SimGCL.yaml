@@ -12,4 +12,10 @@ lambda_cl: 0.2           # contrastive loss weight (paper best: 0.2 Douban-Book,
 tau_cl: 0.2              # contrastive temperature
 reg_weight: 0.0001
 
+# best on validation Recall@20 in scripts/tune_baselines.py --name tune2026 (paper ranges, seed 2026, file split)
+dataset_params:
+  amazon_movie:     {n_layers: 3, lambda_cl: 0.05, eps: 0.1}
+  amazon_book_2014: {n_layers: 3, lambda_cl: 0.05, eps: 0.1}
+  amazon_video:     {n_layers: 3, lambda_cl: 0.01, eps: 0.01}
+
 hyper_parameters: []

@@ -420,14 +420,9 @@ LightGCN to converge"), SimGCL and XSimGCL for up to 500.
 | `tau_cl` | SimGCL, XSimGCL | 0.2 | temperature of the contrastive loss |
 | `layer_cl` | XSimGCL | 1 | layer contrasted with the final representation (1-indexed) |
 
-Values tuned on validation Recall@20 (seed 2026) are included for Movie and Video only:
-
-| Model | Movie | Video |
-|---|---|---|
-| LightGCN | `n_layers` 3, `reg_weight` 1e-3 | `n_layers` 4, `reg_weight` 1e-3 |
-| XSimGCL | `n_layers` 5, `layer_cl` 1, `eps` 0.1, `lambda_cl` 0.1 | `n_layers` 5, `layer_cl` 5, `eps` 0.01, `lambda_cl` 0.01 |
-
-The other datasets use the defaults above, which are not tuned.
+The `dataset_params` of the four model files hold the best configuration of the
+[tuning below](#tuning-the-baselines) for Movie, Book and Video. The other datasets use the defaults above, which
+are not tuned.
 
 ### Tuning the baselines
 
@@ -439,7 +434,16 @@ finished on that dataset.
 ```bash
 python scripts/tune_baselines.py --gpus 0:4,1:4,2:2            # gpu:slots; resumes if started again
 python scripts/tune_baselines.py --report                      # best configuration per model / dataset
+python scripts/tune_baselines.py --merge                       # result/<MODEL>/<dataset>/: one log + model code
 ```
+
+The tuning writes `src/log/tuning/<name>/`: `tune.log`, `results.jsonl` (one line per configuration) and
+`best.md`. `--merge` writes `result/<MODEL>/<dataset>/`: `<MODEL>-<dataset>.log`, which puts all configurations
+of a model and dataset into one log in MMRec's format (one `=========i/N: Parameters:...` section per
+configuration, then All Over and BEST), the model code saved by the best run, and `<MODEL>-<dataset>.md`, a
+table of every configuration with valid and test Recall@10/20 and NDCG@10/20. `result/README.md` lists the best
+configuration of every model per dataset. The runs are separate processes, so the timestamps in a merged log
+overlap.
 
 | Model | Search (seed 2026) | Source |
 |---|---|---|
@@ -452,6 +456,30 @@ The SimGCL paper shows its λ values only in a figure. The list above is XSimGCL
 best value SimGCL reports on Amazon-Book. The jobs use `deterministic: False` (the faster graph kernel) unless
 `--deterministic` is given. One job already keeps an RTX A6000 busy; 4 to 8 jobs per GPU add only about 15%
 throughput.
+
+Results of `--name tune2026` (file split, seed 2026, 267 configurations, about 13.5 hours on three RTX A6000s
+with 4 / 4 / 2 jobs). Test split at the best validation epoch. The last column is Table 1 of the AlphaFree paper
+(Recall@20 / NDCG@20):
+
+| Model | Dataset | Best configuration | Best epoch | Valid R@20 | Test R@20 | Test N@20 | AlphaFree paper |
+|---|---|---|--:|--:|--:|--:|--:|
+| MF | Movie | `reg_weight` 1e-2 | 734 | 0.0982 | 0.0967 | 0.0859 | 0.0580 / 0.0533 |
+| MF | Book | `reg_weight` 1e-2 | 784 | 0.0787 | 0.0775 | 0.0637 | 0.0436 / 0.0387 |
+| MF | Video | `reg_weight` 1e-2 | 934 | 0.0946 | 0.0939 | 0.0524 | 0.0177 / 0.0095 |
+| LightGCN | Movie | `n_layers` 3, `reg_weight` 1e-3 | 704 | 0.1020 | 0.0998 | 0.0888 | 0.0860 / 0.0754 |
+| LightGCN | Book | `n_layers` 4, `reg_weight` 1e-4 | 764 | 0.0858 | 0.0847 | 0.0711 | 0.0712 / 0.0597 |
+| LightGCN | Video | `n_layers` 2, `reg_weight` 1e-2 | 964 | 0.1033 | 0.1022 | 0.0565 | 0.0732 / 0.0409 |
+| SimGCL | Movie | `n_layers` 3, `lambda_cl` 0.05, `eps` 0.1 | 54 | 0.1076 | 0.1063 | 0.0979 | – |
+| SimGCL | Book | `n_layers` 3, `lambda_cl` 0.05, `eps` 0.1 | 39 | 0.0860 | 0.0847 | 0.0717 | – |
+| SimGCL | Video | `n_layers` 3, `lambda_cl` 0.01, `eps` 0.01 | 24 | 0.0961 | 0.0951 | 0.0533 | – |
+| XSimGCL | Movie | `n_layers` 5, `layer_cl` 1, `lambda_cl` 0.1, `eps` 0.1 | 69 | 0.1121 | 0.1104 | 0.1023 | 0.0967 / 0.0866 |
+| XSimGCL | Book | `n_layers` 5, `layer_cl` 1, `lambda_cl` 0.1, `eps` 0.05 | 149 | 0.0902 | 0.0884 | 0.0763 | 0.0818 / 0.0690 |
+| XSimGCL | Video | `n_layers` 5, `layer_cl` 5, `lambda_cl` 0.01, `eps` 0.01 | 34 | 0.1050 | 0.1041 | 0.0586 | 0.0897 / 0.0500 |
+
+Several optima lie on the edge of the paper ranges: `reg_weight` 1e-2 (the largest) for MF on all three datasets
+and for LightGCN on Video, the most layers for SimGCL (3) and XSimGCL (5) on all three, and `lambda_cl` 0.01 (the
+smallest) for SimGCL and XSimGCL on Video. MF and LightGCN on Video reach their best validation epoch close to
+the 1000-epoch limit.
 
 ## Verification against the official AlphaFree release
 

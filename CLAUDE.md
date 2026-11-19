@@ -78,3 +78,7 @@ Downloaded archives / checkpoints: load checkpoints with `torch.load(..., weight
 
 `src/log/<MODEL>/<dataset>/<time>[_<tag>]/`: `<MODEL>-<dataset>.log`, a copy of the model file, `summary.json`;
 `Best_<MODEL>_<hp>.pth` with `--save_model`. Gitignored.
+
+Tuning: `scripts/tune_baselines.py` writes `src/log/tuning/<name>/` (`tune.log`, `results.jsonl`, `best.md`);
+`--merge` writes `result/<MODEL>/<dataset>/` (all configurations in one MMRec-style log, the best run's model
+code, an md table) and `result/README.md`. `*.log` is gitignored, so only the md and code files are committed.

@@ -9,10 +9,10 @@ epochs: 1000             # "Typically, 1000 epochs are sufficient for LightGCN t
 n_layers: 3
 reg_weight: 0.0001       # L2 on the batch's layer-0 embeddings
 
-# best on validation Recall@20 in the AlphaFree repo sweep (n_layers 1-5 x reg {1e-5,1e-4,1e-3}, seed 2026;
-# experiments/LightGCN/2026-09-23_movie-video-tuning.md)
+# best on validation Recall@20 in scripts/tune_baselines.py --name tune2026 (paper ranges, seed 2026, file split)
 dataset_params:
-  amazon_movie: {n_layers: 3, reg_weight: 0.001}
-  amazon_video: {n_layers: 4, reg_weight: 0.001}
+  amazon_movie:     {n_layers: 3, reg_weight: 0.001}
+  amazon_book_2014: {n_layers: 4, reg_weight: 0.0001}
+  amazon_video:     {n_layers: 2, reg_weight: 0.01}
 
 hyper_parameters: []

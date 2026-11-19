@@ -10,4 +10,10 @@ epochs: 1000
 
 reg_weight: 0.0001       # L2 on the batch's embeddings (same scaling as LightGCN)
 
+# best on validation Recall@20 in scripts/tune_baselines.py --name tune2026 (paper ranges, seed 2026, file split)
+dataset_params:
+  amazon_movie:     {reg_weight: 0.01}
+  amazon_book_2014: {reg_weight: 0.01}
+  amazon_video:     {reg_weight: 0.01}
+
 hyper_parameters: []

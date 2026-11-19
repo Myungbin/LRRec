@@ -12,10 +12,10 @@ lambda_cl: 0.2           # contrastive loss weight
 tau_cl: 0.2              # contrastive temperature
 reg_weight: 0.0001
 
-# best on validation Recall@20 in the AlphaFree repo's paper-range sweep (seed 2026;
-# experiments/XSimGCL/2026-09-22_paper-range-tuning.md)
+# best on validation Recall@20 in scripts/tune_baselines.py --name tune2026 (paper ranges, seed 2026, file split)
 dataset_params:
-  amazon_movie: {eps: 0.1,  lambda_cl: 0.1,  n_layers: 5, layer_cl: 1}
-  amazon_video: {eps: 0.01, lambda_cl: 0.01, n_layers: 5, layer_cl: 5}
+  amazon_movie:     {n_layers: 5, layer_cl: 1, lambda_cl: 0.1,  eps: 0.1}
+  amazon_book_2014: {n_layers: 5, layer_cl: 1, lambda_cl: 0.1,  eps: 0.05}
+  amazon_video:     {n_layers: 5, layer_cl: 5, lambda_cl: 0.01, eps: 0.01}
 
 hyper_parameters: []
