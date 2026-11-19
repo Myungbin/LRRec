@@ -56,37 +56,41 @@ class AlphaFree(GeneralRecommender):
         if self.aug_mode not in ("both", "inter", "rep", "none"):
             raise ValueError("aug_mode must be one of both / inter / rep / none")
 
-        R, R_aug, z_aug = self._load_or_build_augmentation(config, dataloader)
-        self.R = csr_to_torch(R, self.device)
-        self.R_aug = csr_to_torch(R_aug, self.device)
-        self.register_buffer("Z", self.lr_feat, persistent=False)
-        self.register_buffer("Z_aug", torch.from_numpy(z_aug).float().to(self.device), persistent=False)
+        inter_norm, inter_aug_norm, item_lr_aug = self._load_or_build_augmentation(config, dataloader)
+        self.inter_norm = csr_to_torch(inter_norm, self.device)
+        self.inter_aug_norm = csr_to_torch(inter_aug_norm, self.device)
+        self.register_buffer("item_lr", self.lr_feat, persistent=False)
+        self.register_buffer("item_lr_aug", torch.from_numpy(item_lr_aug).float().to(self.device), persistent=False)
         del self.lr_feat
 
-        d = self.Z.shape[1]
-        h = lr_mlp_hidden(d, self.lm_model)
-        self.mlp_origin = nn.Sequential(nn.Linear(d, h), nn.LeakyReLU(), nn.Linear(h, self.embedding_dim))
-        self.mlp_aug = nn.Sequential(nn.Linear(d, h), nn.LeakyReLU(), nn.Linear(h, self.embedding_dim))
+        lr_dim = self.item_lr.shape[1]
+        hidden_dim = lr_mlp_hidden(lr_dim, self.lm_model)
+        self.mlp_origin = nn.Sequential(
+            nn.Linear(lr_dim, hidden_dim), nn.LeakyReLU(), nn.Linear(hidden_dim, self.embedding_dim)
+        )
+        self.mlp_aug = nn.Sequential(
+            nn.Linear(lr_dim, hidden_dim), nn.LeakyReLU(), nn.Linear(hidden_dim, self.embedding_dim)
+        )
 
-        self._item_cache = None  # mlp_origin(Z) during evaluation
+        self._eval_item_emb = None
 
     def _load_or_build_augmentation(self, config, dataloader):
         cache_key = "{}_Kc{}_simb{}_selfexcl{}{}".format(
             self.lm_model, self.K_c, self.sim_b, int(self.exclude_self), split_tag(config)
         )
         cache_dir = os.path.join(os.path.abspath(config["data_path"] + config["dataset"]), "preprocessed", cache_key)
-        files = ["user_interact_matrix.npz", "aug_user_interact_matrix.npz", "item_cf_embeds_augmented.npy"]
-        if all(os.path.isfile(os.path.join(cache_dir, f)) for f in files):
+        cache_files = ["user_interact_matrix.npz", "aug_user_interact_matrix.npz", "item_cf_embeds_augmented.npy"]
+        if all(os.path.isfile(os.path.join(cache_dir, f)) for f in cache_files):
             self.logger.info(f"AlphaFree: loading cached augmentation {cache_dir}")
-            R = sp.load_npz(os.path.join(cache_dir, files[0])).tocsr()
-            R_aug = sp.load_npz(os.path.join(cache_dir, files[1])).tocsr()
-            z_aug = np.load(os.path.join(cache_dir, files[2]))
+            inter_norm = sp.load_npz(os.path.join(cache_dir, cache_files[0])).tocsr()
+            inter_aug_norm = sp.load_npz(os.path.join(cache_dir, cache_files[1])).tocsr()
+            item_lr_aug = np.load(os.path.join(cache_dir, cache_files[2]))
         else:
             self.logger.info(
                 f"AlphaFree: building augmentation (K_c={self.K_c}, sim_b={self.sim_b}, "
                 f"exclude_self={self.exclude_self}) -> {cache_dir}"
             )
-            R, R_aug, z_aug = build_augmentation(
+            inter_norm, inter_aug_norm, item_lr_aug = build_augmentation(
                 dataloader.inter_matrix(form="csr"),
                 load_lr_feature(config),
                 K_c=self.K_c,
@@ -95,140 +99,140 @@ class AlphaFree(GeneralRecommender):
                 device=self.device,
             )
             os.makedirs(cache_dir, exist_ok=True)
-            sp.save_npz(os.path.join(cache_dir, files[0]), R)
-            sp.save_npz(os.path.join(cache_dir, files[1]), R_aug)
-            np.save(os.path.join(cache_dir, files[2]), z_aug)
-        if R.shape != (self.n_users, self.n_items) or z_aug.shape[0] != self.n_items:
+            sp.save_npz(os.path.join(cache_dir, cache_files[0]), inter_norm)
+            sp.save_npz(os.path.join(cache_dir, cache_files[1]), inter_aug_norm)
+            np.save(os.path.join(cache_dir, cache_files[2]), item_lr_aug)
+        if inter_norm.shape != (self.n_users, self.n_items) or item_lr_aug.shape[0] != self.n_items:
             raise ValueError(f"augmentation in {cache_dir} does not match the dataset size")
-        return R, R_aug, z_aug
+        return inter_norm, inter_aug_norm, item_lr_aug
 
-    def _pool(self, csr, users):
+    def _pool_user_lr(self, inter_csr, users):
         """sum_i R_ui z_i for each user (embedding_bag: deterministic, unlike cuSPARSE SpMM)."""
-        cols, vals, offsets = gather_csr_rows(*csr, users)
-        return F.embedding_bag(cols, self.Z, offsets, mode="sum", per_sample_weights=vals)
+        item_idx, weights, offsets = gather_csr_rows(*inter_csr, users)
+        return F.embedding_bag(item_idx, self.item_lr, offsets, mode="sum", per_sample_weights=weights)
 
     def compute_origin(self, users):
-        return self.mlp_origin(self._pool(self.R, users)), self.mlp_origin(self.Z)
+        return self.mlp_origin(self._pool_user_lr(self.inter_norm, users)), self.mlp_origin(self.item_lr)
 
     def compute_aug(self, users):
-        user_csr = self.R_aug if self.aug_mode in ("both", "inter") else self.R
-        item_lr = self.Z_aug if self.aug_mode in ("both", "rep") else self.Z
-        return self.mlp_aug(self._pool(user_csr, users)), self.mlp_aug(item_lr)
+        user_inter = self.inter_aug_norm if self.aug_mode in ("both", "inter") else self.inter_norm
+        item_lr = self.item_lr_aug if self.aug_mode in ("both", "rep") else self.item_lr
+        return self.mlp_aug(self._pool_user_lr(user_inter, users)), self.mlp_aug(item_lr)
 
-    def _infonce(self, u, items, pos, neg):
-        u = F.normalize(u, dim=-1)
-        p = F.normalize(items[pos], dim=-1)
-        if neg is None:  # in-batch negatives
-            logits = u @ p.T / self.tau
-            return F.cross_entropy(logits, torch.arange(u.shape[0], device=u.device))
-        n = F.normalize(items[neg], dim=-1)
-        pos_s = (u * p).sum(-1, keepdim=True)
-        neg_s = torch.einsum("bd,bnd->bn", u, n)
-        logits = torch.cat([pos_s, neg_s], dim=1) / self.tau
-        return F.cross_entropy(logits, torch.zeros(u.shape[0], dtype=torch.long, device=u.device))
+    def _infonce(self, user_emb, item_emb, pos_items, neg_items):
+        u_emb = F.normalize(user_emb, dim=-1)
+        pos_emb = F.normalize(item_emb[pos_items], dim=-1)
+        if neg_items is None:  # in-batch negatives
+            logits = u_emb @ pos_emb.T / self.tau
+            return F.cross_entropy(logits, torch.arange(u_emb.shape[0], device=u_emb.device))
+        neg_emb = F.normalize(item_emb[neg_items], dim=-1)
+        pos_scores = (u_emb * pos_emb).sum(-1, keepdim=True)
+        neg_scores = torch.einsum("bd,bnd->bn", u_emb, neg_emb)
+        logits = torch.cat([pos_scores, neg_scores], dim=1) / self.tau
+        return F.cross_entropy(logits, torch.zeros(u_emb.shape[0], dtype=torch.long, device=u_emb.device))
 
-    def _align(self, a, b):
-        a = F.normalize(a, dim=-1)
-        b = F.normalize(b, dim=-1)
-        logits = a @ b.T / self.align_tau
-        labels = torch.arange(a.shape[0], device=a.device)
+    def _align(self, origin_emb, aug_emb):
+        origin_emb = F.normalize(origin_emb, dim=-1)
+        aug_emb = F.normalize(aug_emb, dim=-1)
+        logits = origin_emb @ aug_emb.T / self.align_tau
+        labels = torch.arange(origin_emb.shape[0], device=origin_emb.device)
         return (F.cross_entropy(logits, labels) + F.cross_entropy(logits.T, labels)) / 2
 
     def calculate_loss(self, interaction):
-        users, pos = interaction[0], interaction[1]
-        neg = interaction[2] if len(interaction) > 2 else None
-        if neg is not None and neg.dim() == 1:
-            neg = neg.unsqueeze(1)
+        users, pos_items = interaction[0], interaction[1]
+        neg_items = interaction[2] if len(interaction) > 2 else None
+        if neg_items is not None and neg_items.dim() == 1:
+            neg_items = neg_items.unsqueeze(1)
 
-        u_o, items_o = self.compute_origin(users)
-        u_a, items_a = self.compute_aug(users)
-        loss_origin = self._infonce(u_o, items_o, pos, neg)
-        loss_aug = self._infonce(u_a, items_a, pos, neg)
-        loss_align = self._align(u_o, u_a) + self._align(items_o[pos], items_a[pos])
-        return loss_origin + loss_aug + self.lambda_align * loss_align
+        user_origin, item_origin = self.compute_origin(users)
+        user_aug, item_aug = self.compute_aug(users)
+        rec_loss_origin = self._infonce(user_origin, item_origin, pos_items, neg_items)
+        rec_loss_aug = self._infonce(user_aug, item_aug, pos_items, neg_items)
+        align_loss = self._align(user_origin, user_aug) + self._align(item_origin[pos_items], item_aug[pos_items])
+        return rec_loss_origin + rec_loss_aug + self.lambda_align * align_loss
 
     def train(self, mode=True):
-        self._item_cache = None
+        self._eval_item_emb = None
         return super().train(mode)
 
     def full_sort_predict(self, interaction):
         users = interaction[0]
-        if self._item_cache is None:
-            self._item_cache = F.normalize(self.mlp_origin(self.Z), dim=-1)
-        u = F.normalize(self.mlp_origin(self._pool(self.R, users)), dim=-1)
-        return u @ self._item_cache.T
+        if self._eval_item_emb is None:
+            self._eval_item_emb = F.normalize(self.mlp_origin(self.item_lr), dim=-1)
+        user_emb = F.normalize(self.mlp_origin(self._pool_user_lr(self.inter_norm, users)), dim=-1)
+        return user_emb @ self._eval_item_emb.T
 
 
-def build_augmentation(train_csr, z, K_c, sim_b="raw", exclude_self=False, device="cpu", batch_size=1024):
+def build_augmentation(train_csr, item_lr, K_c, sim_b="raw", exclude_self=False, device="cpu", batch_size=1024):
     """AlphaFree preprocessing (Algorithm 1 of the paper; ``AlphaFreeData`` in the official code).
 
     Args:
         train_csr: (n_users, n_items) training interactions (counts)
-        z: (n_items, d) item LRs, original dtype (computations follow it, as in the official code)
+        item_lr: (n_items, d) item LRs z, original dtype (computations follow it, as in the official code)
     Returns:
-        R      (n_users, n_items) L1-row-normalized train interactions
-        R_aug  (n_users, n_items) L1-row-normalized augmented interactions I+ = I U (U_{i in I} S_i)
-        z_aug  (n_items, d) z+_i = sum_{j in S_i} w_ij z_j / sum_j w_ij  (all-zero when S_i is empty)
+        inter_norm      R  (n_users, n_items) L1-row-normalized train interactions
+        inter_aug_norm  R+ (n_users, n_items) L1-row-normalized augmented interactions I+ = I U (U_{i in I} S_i)
+        item_lr_aug     z+ (n_items, d) z+_i = sum_{j in S_i} w_ij z_j / sum_j w_ij  (all-zero when S_i is empty)
     """
     n_users, n_items = train_csr.shape
-    A = sp.csr_matrix(train_csr, dtype=np.float64)
+    inter_count = sp.csr_matrix(train_csr, dtype=np.float64)
     # (re-)built from the binary pattern exactly like the official csr_matrix((1.0, (u, i))) incl. duplicates
-    R = normalize(sp.csr_matrix(train_csr, dtype=np.float32), norm="l1", axis=1)
+    inter_norm = normalize(sp.csr_matrix(train_csr, dtype=np.float32), norm="l1", axis=1)
 
     # behavioral similarity: item-item co-occurrence (diagonal = popularity)
-    sim = (A.T @ A).tocsr().astype(np.float64)
+    cooc = (inter_count.T @ inter_count).tocsr().astype(np.float64)
     if exclude_self:
-        sim = sim - sp.diags(sim.diagonal())
-        sim.eliminate_zeros()
+        cooc = cooc - sp.diags(cooc.diagonal())
+        cooc.eliminate_zeros()
     if sim_b == "cosine":
-        deg = np.asarray(A.sum(axis=0)).ravel()
+        item_deg = np.asarray(inter_count.sum(axis=0)).ravel()
         with np.errstate(divide="ignore"):
-            d_inv_sqrt = np.where(deg > 0, 1.0 / np.sqrt(deg), 0.0)
-        D = sp.diags(d_inv_sqrt)
-        sim = (D @ sim @ D).tocsr()
+            inv_sqrt_deg = np.where(item_deg > 0, 1.0 / np.sqrt(item_deg), 0.0)
+        inv_sqrt_deg_mat = sp.diags(inv_sqrt_deg)
+        cooc = (inv_sqrt_deg_mat @ cooc @ inv_sqrt_deg_mat).tocsr()
     elif sim_b != "raw":
         raise ValueError(f"unknown sim_b: {sim_b}")
     # the official code keeps the self-loop and reserves one extra slot for it
-    topk = K_c if exclude_self else K_c + 1
+    n_candidates = K_c if exclude_self else K_c + 1
 
     # semantic threshold: mean LR similarity of each item to all items
-    zt = torch.from_numpy(z).to(device)
-    sim_sum = torch.zeros(n_items, device=device, dtype=zt.dtype)
+    item_lr_t = torch.from_numpy(item_lr).to(device)
+    lr_sim_sum = torch.zeros(n_items, device=device, dtype=item_lr_t.dtype)
     for start in range(0, n_items, batch_size):
         end = min(start + batch_size, n_items)
-        sim_sum[start:end] = (zt[start:end] @ zt.T).sum(dim=1)
-    sem_mean = (sim_sum / n_items).cpu().numpy()
-    del zt
+        lr_sim_sum[start:end] = (item_lr_t[start:end] @ item_lr_t.T).sum(dim=1)
+    lr_sim_mean = (lr_sim_sum / n_items).cpu().numpy()
+    del item_lr_t
 
-    # S_i: top-k co-occurring items that pass the semantic filter
+    # S_i (neighbors): top-K_c co-occurring items that pass the semantic filter
     rows, cols, vals = [], [], []
     for i in range(n_items):
-        lo, hi = sim.indptr[i], sim.indptr[i + 1]
-        if hi == lo:
+        row_start, row_end = cooc.indptr[i], cooc.indptr[i + 1]
+        if row_end == row_start:
             continue
-        indices = sim.indices[lo:hi]
-        values = sim.data[lo:hi]
-        for j in np.argsort(values)[-topk:][::-1]:
-            nb = indices[j]
-            if float(np.dot(z[i], z[nb])) >= sem_mean[i]:
+        cand_items = cooc.indices[row_start:row_end]
+        cand_cooc = cooc.data[row_start:row_end]
+        for k in np.argsort(cand_cooc)[-n_candidates:][::-1]:
+            j = cand_items[k]
+            if float(np.dot(item_lr[i], item_lr[j])) >= lr_sim_mean[i]:
                 rows.append(i)
-                cols.append(nb)
-                vals.append(float(values[j]))
-    S = sp.csr_matrix((vals, (rows, cols)), shape=(n_items, n_items))
+                cols.append(j)
+                vals.append(float(cand_cooc[k]))
+    neighbors = sp.csr_matrix((vals, (rows, cols)), shape=(n_items, n_items))
 
     # representation augmentation: weighted mean of neighbor LRs
-    deg = np.asarray(S.sum(axis=1)).ravel()
+    nb_weight_sum = np.asarray(neighbors.sum(axis=1)).ravel()
     with np.errstate(divide="ignore"):
-        deg_inv = np.power(deg, -1.0)
-    deg_inv[np.isinf(deg_inv)] = 0.0
-    z_aug = (sp.diags(deg_inv) @ S).dot(z)
+        nb_weight_inv = np.power(nb_weight_sum, -1.0)
+    nb_weight_inv[np.isinf(nb_weight_inv)] = 0.0
+    item_lr_aug = (sp.diags(nb_weight_inv) @ neighbors).dot(item_lr)
 
     # interaction augmentation: I+ = I U neighbors of I (paper Eq. 6), uniform weights.
     # The official code builds I+ from the S_i alone and relies on the self-loop to keep I; that drops the
     # rare (u, i) whose i lost its self-loop to ties (1 of 1.34M entries on amazon_movie). Everything else
     # (R, S_i, z+) matches the official preprocessed files exactly.
-    B = (A > 0).astype(np.float32)
-    S_bin = (S > 0).astype(np.float32)
-    I_plus = ((B + B @ S_bin) > 0).astype(np.float32)
-    R_aug = normalize(sp.csr_matrix(I_plus, dtype=np.float32), norm="l1", axis=1)
-    return R.tocsr(), R_aug.tocsr(), z_aug
+    inter_bin = (inter_count > 0).astype(np.float32)
+    neighbors_bin = (neighbors > 0).astype(np.float32)
+    inter_aug = ((inter_bin + inter_bin @ neighbors_bin) > 0).astype(np.float32)
+    inter_aug_norm = normalize(sp.csr_matrix(inter_aug, dtype=np.float32), norm="l1", axis=1)
+    return inter_norm.tocsr(), inter_aug_norm.tocsr(), item_lr_aug

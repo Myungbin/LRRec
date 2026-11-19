@@ -16,6 +16,13 @@ Formatting: `black src scripts && isort src scripts` from the repo root (120 col
 Comments only where they say *why* (deviations from the official code, non-obvious encodings); no section banners,
 `# coding` headers or docstrings that restate the code.
 
+Model variable names (MMRec style; follow them in new models): `users` / `pos_items` / `neg_items` for index
+tensors, `user_emb` / `item_emb` for full tables and `u_emb` / `pos_emb` / `neg_emb` for batch rows, `ego_emb`
+(layer 0) / `layer_emb` / `all_emb` (final) for propagation, `*_scores`, `*_loss`, and `item_lr` / `user_lr` for
+language representations. Never rename parameters stored in checkpoints (`user_embedding`, `item_embedding`,
+`mlp`, `mlp_origin`, `mlp_aug`) or config keys. A rename must leave outputs bit-identical: in BPR losses compute
+`neg_scores` before `pos_scores`, the autograd accumulation order of the earlier code.
+
 ## Commands
 
 ```bash

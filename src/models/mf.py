@@ -27,17 +27,19 @@ class MF(GeneralRecommender):
         nn.init.xavier_uniform_(self.item_embedding.weight)
 
     def calculate_loss(self, interaction):
-        users, pos, neg = interaction[0], interaction[1], interaction[2]
-        if neg.dim() == 2:
-            if neg.shape[1] != 1:
+        users, pos_items, neg_items = interaction[0], interaction[1], interaction[2]
+        if neg_items.dim() == 2:
+            if neg_items.shape[1] != 1:
                 raise ValueError("MF uses one BPR negative; set neg_sample_num: 1")
-            neg = neg[:, 0]
-        u = self.user_embedding(users)
-        p = self.item_embedding(pos)
-        n = self.item_embedding(neg)
-        bpr = F.softplus((u * n).sum(-1) - (u * p).sum(-1)).mean()
-        reg = 0.5 * (u.pow(2).sum() + p.pow(2).sum() + n.pow(2).sum()) / users.shape[0]
-        return bpr + self.reg_weight * reg
+            neg_items = neg_items[:, 0]
+        u_emb = self.user_embedding(users)
+        pos_emb = self.item_embedding(pos_items)
+        neg_emb = self.item_embedding(neg_items)
+        neg_scores = (u_emb * neg_emb).sum(-1)
+        pos_scores = (u_emb * pos_emb).sum(-1)
+        bpr_loss = F.softplus(neg_scores - pos_scores).mean()
+        reg_loss = 0.5 * (u_emb.pow(2).sum() + pos_emb.pow(2).sum() + neg_emb.pow(2).sum()) / users.shape[0]
+        return bpr_loss + self.reg_weight * reg_loss
 
     def full_sort_predict(self, interaction):
         return self.user_embedding(interaction[0]) @ self.item_embedding.weight.T

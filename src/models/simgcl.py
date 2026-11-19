@@ -44,57 +44,61 @@ class SimGCL(GeneralRecommender):
         self.norm_adj = build_graph(
             dataloader.inter_matrix(form="coo"), self.n_users, self.n_items, self.device, config["deterministic"]
         )
-        self._cache = None
+        self._eval_emb = None
 
     def _noise(self, emb):
         return torch.sign(emb) * F.normalize(torch.rand_like(emb), dim=-1) * self.eps
 
     def forward(self, perturbed=False):
-        emb = torch.cat([self.user_embedding.weight, self.item_embedding.weight], dim=0)
-        layers = []
+        layer_emb = torch.cat([self.user_embedding.weight, self.item_embedding.weight], dim=0)
+        layer_embs = []
         for _ in range(self.n_layers):
-            emb = self.norm_adj.mm(emb)
+            layer_emb = self.norm_adj.mm(layer_emb)
             if perturbed and self.eps > 0:
-                emb = emb + self._noise(emb)
-            layers.append(emb)
-        final = torch.stack(layers, dim=1).mean(dim=1)
-        return torch.split(final, [self.n_users, self.n_items])
+                layer_emb = layer_emb + self._noise(layer_emb)
+            layer_embs.append(layer_emb)
+        all_emb = torch.stack(layer_embs, dim=1).mean(dim=1)
+        return torch.split(all_emb, [self.n_users, self.n_items])
 
-    def _info_nce(self, a, b):
-        a = F.normalize(a, dim=-1)
-        b = F.normalize(b, dim=-1)
-        logits = a @ b.T / self.tau_cl
-        return F.cross_entropy(logits, torch.arange(a.shape[0], device=a.device))
+    def _info_nce(self, view1, view2):
+        view1 = F.normalize(view1, dim=-1)
+        view2 = F.normalize(view2, dim=-1)
+        logits = view1 @ view2.T / self.tau_cl
+        return F.cross_entropy(logits, torch.arange(view1.shape[0], device=view1.device))
 
     def calculate_loss(self, interaction):
-        users, pos, neg = interaction[0], interaction[1], interaction[2]
-        if neg.dim() == 2:
-            if neg.shape[1] != 1:
+        users, pos_items, neg_items = interaction[0], interaction[1], interaction[2]
+        if neg_items.dim() == 2:
+            if neg_items.shape[1] != 1:
                 raise ValueError("SimGCL uses one BPR negative; set neg_sample_num: 1")
-            neg = neg[:, 0]
-        user_e, item_e = self.forward(perturbed=False)
-        u, p, n = user_e[users], item_e[pos], item_e[neg]
-        bpr = F.softplus((u * n).sum(-1) - (u * p).sum(-1)).mean()
+            neg_items = neg_items[:, 0]
+        user_emb, item_emb = self.forward(perturbed=False)
+        u_emb, pos_emb, neg_emb = user_emb[users], item_emb[pos_items], item_emb[neg_items]
+        neg_scores = (u_emb * neg_emb).sum(-1)
+        pos_scores = (u_emb * pos_emb).sum(-1)
+        bpr_loss = F.softplus(neg_scores - pos_scores).mean()
 
-        user_v1, item_v1 = self.forward(perturbed=True)
-        user_v2, item_v2 = self.forward(perturbed=True)
-        uu, ui = torch.unique(users), torch.unique(pos)
-        cl = self._info_nce(user_v1[uu], user_v2[uu]) + self._info_nce(item_v1[ui], item_v2[ui])
+        user_view1, item_view1 = self.forward(perturbed=True)
+        user_view2, item_view2 = self.forward(perturbed=True)
+        uniq_users, uniq_items = torch.unique(users), torch.unique(pos_items)
+        user_cl_loss = self._info_nce(user_view1[uniq_users], user_view2[uniq_users])
+        item_cl_loss = self._info_nce(item_view1[uniq_items], item_view2[uniq_items])
+        cl_loss = user_cl_loss + item_cl_loss
 
-        l2 = (
+        ego_l2 = (
             self.user_embedding(users).pow(2).sum()
-            + self.item_embedding(pos).pow(2).sum()
-            + self.item_embedding(neg).pow(2).sum()
+            + self.item_embedding(pos_items).pow(2).sum()
+            + self.item_embedding(neg_items).pow(2).sum()
         )
-        reg = 0.5 * l2 / users.shape[0]
-        return bpr + self.lambda_cl * cl + self.reg_weight * reg
+        reg_loss = 0.5 * ego_l2 / users.shape[0]
+        return bpr_loss + self.lambda_cl * cl_loss + self.reg_weight * reg_loss
 
     def train(self, mode=True):
-        self._cache = None
+        self._eval_emb = None
         return super().train(mode)
 
     def full_sort_predict(self, interaction):
-        if self._cache is None:
-            self._cache = self.forward(perturbed=False)
-        user_e, item_e = self._cache
-        return user_e[interaction[0]] @ item_e.T
+        if self._eval_emb is None:
+            self._eval_emb = self.forward(perturbed=False)
+        user_emb, item_emb = self._eval_emb
+        return user_emb[interaction[0]] @ item_emb.T
