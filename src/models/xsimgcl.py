@@ -17,7 +17,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from common.abstract_recommender import GeneralRecommender
-from utils.utils import build_norm_adj
+from utils.utils import build_graph
 
 
 class XSimGCL(GeneralRecommender):
@@ -39,8 +39,8 @@ class XSimGCL(GeneralRecommender):
         self.item_embedding = nn.Embedding(self.n_items, self.embedding_dim)
         nn.init.xavier_uniform_(self.user_embedding.weight)
         nn.init.xavier_uniform_(self.item_embedding.weight)
-        self.norm_adj = build_norm_adj(dataloader.inter_matrix(form="coo"), self.n_users, self.n_items).to(
-            self.device
+        self.norm_adj = build_graph(
+            dataloader.inter_matrix(form="coo"), self.n_users, self.n_items, self.device, config["deterministic"]
         )
         self._cache = None
 
@@ -51,7 +51,7 @@ class XSimGCL(GeneralRecommender):
         emb = torch.cat([self.user_embedding.weight, self.item_embedding.weight], dim=0)
         layers, cl_emb = [], None
         for layer in range(1, self.n_layers + 1):
-            emb = torch.sparse.mm(self.norm_adj, emb)
+            emb = self.norm_adj.mm(emb)
             if perturbed and self.eps > 0:
                 emb = emb + self._noise(emb)
             layers.append(emb)

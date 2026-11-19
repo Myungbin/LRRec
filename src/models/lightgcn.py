@@ -15,7 +15,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from common.abstract_recommender import GeneralRecommender
-from utils.utils import build_norm_adj
+from utils.utils import build_graph
 
 
 class LightGCN(GeneralRecommender):
@@ -31,8 +31,8 @@ class LightGCN(GeneralRecommender):
         self.item_embedding = nn.Embedding(self.n_items, self.embedding_dim)
         nn.init.xavier_uniform_(self.user_embedding.weight)
         nn.init.xavier_uniform_(self.item_embedding.weight)
-        self.norm_adj = build_norm_adj(dataloader.inter_matrix(form="coo"), self.n_users, self.n_items).to(
-            self.device
+        self.norm_adj = build_graph(
+            dataloader.inter_matrix(form="coo"), self.n_users, self.n_items, self.device, config["deterministic"]
         )
         self._cache = None
 
@@ -40,7 +40,7 @@ class LightGCN(GeneralRecommender):
         emb = torch.cat([self.user_embedding.weight, self.item_embedding.weight], dim=0)
         summed = emb
         for _ in range(self.n_layers):
-            emb = torch.sparse.mm(self.norm_adj, emb)
+            emb = self.norm_adj.mm(emb)
             summed = summed + emb
         final = summed / (self.n_layers + 1)
         return torch.split(final, [self.n_users, self.n_items])

@@ -129,6 +129,63 @@ def build_norm_adj(inter, n_users, n_items):
     return scipy_to_torch_sparse(norm)
 
 
+class _SymmetricSpMM(torch.autograd.Function):
+    """y = A x for a symmetric sparse A; the gradient w.r.t. x is A^T g = A g."""
+
+    @staticmethod
+    def forward(ctx, x, adj):
+        ctx.adj = adj
+        return adj.apply(x)
+
+    @staticmethod
+    def backward(ctx, grad):
+        return ctx.adj.apply(grad), None
+
+
+class SymmetricAdjacency:
+    r"""A symmetric sparse matrix (e.g. the normalized graph of :func:`build_norm_adj`) for ``y = A @ x`` with
+    autograd. Since A is symmetric, backward is another product with A; ``torch.sparse.mm`` on a COO matrix
+    instead transposes and re-sorts A at every backward pass, which dominated LightGCN's step time.
+
+    deterministic=True : weighted ``F.embedding_bag`` over the CSR rows -- bit-for-bit repeatable
+                         (about 1.6x faster than COO ``torch.sparse.mm`` on Book)
+    deterministic=False: cuSPARSE CSR SpMM -- about 5x faster than COO, not bitwise repeatable
+                         (COO ``torch.sparse.mm`` is not either)
+    """
+
+    def __init__(self, coo, deterministic=True):
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")  # "Sparse CSR tensor support is in beta"
+            csr = coo.coalesce().to_sparse_csr()
+        self.shape = csr.shape
+        self.deterministic = bool(deterministic)
+        self.csr = csr
+        self.ptr, self.idx, self.val = csr.crow_indices(), csr.col_indices(), csr.values()
+
+    def to(self, device):
+        self.csr = self.csr.to(device)
+        self.ptr, self.idx, self.val = self.csr.crow_indices(), self.csr.col_indices(), self.csr.values()
+        return self
+
+    def apply(self, x):
+        if self.deterministic:
+            return torch.nn.functional.embedding_bag(
+                self.idx, x, self.ptr, mode="sum", per_sample_weights=self.val, include_last_offset=True
+            )
+        return torch.sparse.mm(self.csr, x)
+
+    def mm(self, x):
+        """``A @ x`` with autograd w.r.t. ``x``."""
+        return _SymmetricSpMM.apply(x, self)
+
+
+def build_graph(inter, n_users, n_items, device, deterministic=True):
+    """Normalized user-item graph (:func:`build_norm_adj`) as a :class:`SymmetricAdjacency` on ``device``."""
+    return SymmetricAdjacency(build_norm_adj(inter, n_users, n_items), deterministic).to(device)
+
+
 def csr_to_torch(csr, device):
     """scipy CSR -> (indptr, indices, data) tensors on ``device`` for :func:`gather_csr_rows`."""
     csr = sp.csr_matrix(csr)

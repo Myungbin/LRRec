@@ -1,0 +1,15 @@
+# SimGCL (Yu et al., SIGIR'22) -- ID-based baseline, see models/simgcl.py
+# General settings of the paper: emb 64, Xavier, Adam lr 1e-3, L2 1e-4, batch 2048, tau 0.2.
+is_lr_model: False       # ID embeddings only; item LRs are not loaded
+neg_sample_num: 1        # BPR
+train_sampling: user
+learning_rate: 0.001
+train_batch_size: 2048
+
+n_layers: 2
+eps: 0.1                 # magnitude of the signed uniform noise ("eps near 0.1 is best on all datasets")
+lambda_cl: 0.2           # contrastive loss weight (paper best: 0.2 Douban-Book, 0.5 Yelp2018, 2 Amazon-Book)
+tau_cl: 0.2              # contrastive temperature
+reg_weight: 0.0001
+
+hyper_parameters: []

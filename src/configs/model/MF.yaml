@@ -1,0 +1,13 @@
+# MF-BPR (Rendle et al., UAI'09) -- ID-based baseline, see models/mf.py
+# General settings of the LightGCN paper (emb 64, Xavier, Adam lr 1e-3); the BPR paper gives no search grid,
+# so reg_weight is searched like LightGCN's L2: {1e-6, 1e-5, 1e-4, 1e-3, 1e-2}.
+is_lr_model: False       # ID embeddings only; item LRs are not loaded
+neg_sample_num: 1        # BPR
+train_sampling: user
+learning_rate: 0.001
+train_batch_size: 2048
+epochs: 1000
+
+reg_weight: 0.0001       # L2 on the batch's embeddings (same scaling as LightGCN)
+
+hyper_parameters: []

@@ -14,10 +14,10 @@ YAML, so ``0.2`` -> float, ``"[0.1,0.2]"`` -> list, ``true`` -> bool.
 import argparse
 import os
 
-import yaml
-
 os.environ.setdefault("NUMEXPR_MAX_THREADS", str(os.cpu_count()))
 os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")  # needed by deterministic cuBLAS (config: deterministic)
+
+from utils.configurator import load_yaml  # noqa: E402  (same YAML rules as the config files: 1e-3 is a float)
 
 
 def parse_overrides(unknown):
@@ -35,7 +35,7 @@ def parse_overrides(unknown):
             i += 2
         else:
             value, i = "true", i + 1
-        overrides[key] = yaml.safe_load(value)
+        overrides[key] = load_yaml(value)
     return overrides
 
 

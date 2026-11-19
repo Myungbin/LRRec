@@ -22,7 +22,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from common.abstract_recommender import GeneralRecommender, lr_mlp_hidden
-from utils.utils import build_norm_adj, scipy_to_torch_sparse
+from utils.utils import build_graph, scipy_to_torch_sparse
 
 
 class AlphaRec(GeneralRecommender):
@@ -34,7 +34,7 @@ class AlphaRec(GeneralRecommender):
         self.tau = config["tau"]
 
         inter = dataloader.inter_matrix(form="coo").astype(np.float32)
-        self.norm_adj = build_norm_adj(inter, self.n_users, self.n_items).to(self.device)
+        self.norm_adj = build_graph(inter, self.n_users, self.n_items, self.device, config["deterministic"])
 
         # user LR = mean of the history's item LRs (users without history get a zero vector)
         deg = np.asarray(inter.sum(axis=1)).ravel()
@@ -54,7 +54,7 @@ class AlphaRec(GeneralRecommender):
         all_e = torch.cat([self.mlp(self.Z_user), self.mlp(self.Z)], dim=0)
         layers = [all_e]
         for _ in range(self.n_layers):
-            all_e = torch.sparse.mm(self.norm_adj, all_e)
+            all_e = self.norm_adj.mm(all_e)
             layers.append(all_e)
         all_e = torch.stack(layers, dim=1).mean(dim=1)
         return torch.split(all_e, [self.n_users, self.n_items])

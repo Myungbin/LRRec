@@ -4,6 +4,7 @@ neg_sample_num: 1        # BPR
 train_sampling: user
 learning_rate: 0.001
 train_batch_size: 2048
+epochs: 1000             # "Typically, 1000 epochs are sufficient for LightGCN to converge" (paper Sec. 4.1.2)
 
 n_layers: 3
 reg_weight: 0.0001       # L2 on the batch's layer-0 embeddings

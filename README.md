@@ -36,8 +36,10 @@ The official AlphaFree checkpoints reproduce the official test numbers when eval
 |---|---|---|---|---|
 | `AlphaFree` | LR-based | No user embeddings, no item IDs, no GNN. User LR = weighted sum of history LRs; an MLP maps LRs to the recommendation space; co-occurrence + LR-similarity augmentation gives a second view | InfoNCE (original + augmented view) + alignment | Jeon et al., *AlphaFree: Recommendation Free from Users, IDs, and GNNs*, WWW 2026 |
 | `AlphaRec` | LR-based | User LR = mean of history LRs; shared MLP on LRs, then LightGCN propagation | InfoNCE on cosine scores | Sheng et al., *Language Representations Can be What Recommenders Need: Findings and Potentials*, ICLR 2025 |
+| `MF` | ID-based baseline | Matrix factorization, score = e_u · e_i | BPR + L2 | Rendle et al., UAI 2009 |
 | `LightGCN` | ID-based baseline | ID embeddings + LightGCN propagation (mean of layers 0..L) | BPR + L2 | He et al., SIGIR 2020 |
-| `XSimGCL` | ID-based baseline | LightGCN + noise-perturbed cross-layer contrastive learning | BPR + InfoNCE + L2 | Yu et al., TKDE 2023 |
+| `SimGCL` | ID-based baseline | LightGCN + contrastive learning between two noise-perturbed views | BPR + InfoNCE + L2 | Yu et al., SIGIR 2022 |
+| `XSimGCL` | ID-based baseline | SimGCL with one perturbed propagation and cross-layer contrast | BPR + InfoNCE + L2 | Yu et al., TKDE 2023 |
 
 Each model is a single file in [`src/models/`](src/models) with the equations in its docstring.
 
@@ -189,7 +191,7 @@ python main.py -m <MODEL> -d <DATASET> [-g GPU] [-s] [-t TAG] [--eval_only --mod
 
 | Argument | Default | Meaning |
 |---|---|---|
-| `-m`, `--model` | `AlphaFree` | model class name (`AlphaFree`, `AlphaRec`, `LightGCN`, `XSimGCL`) |
+| `-m`, `--model` | `AlphaFree` | model class name (`AlphaFree`, `AlphaRec`, `MF`, `LightGCN`, `SimGCL`, `XSimGCL`) |
 | `-d`, `--dataset` | `amazon_movie` | dataset directory name under `data/` |
 | `-g`, `--gpu_id` | `0` | GPU index (sets `CUDA_VISIBLE_DEVICES`) |
 | `-s`, `--save_model` | off | save the best checkpoint (by validation score) in the run directory |
@@ -341,10 +343,20 @@ user's positives in the split and `rel_k = 1` if the item at rank k is in `G`:
 
 `init_seed` seeds Python, NumPy and PyTorch. With `deterministic: True` it also calls
 `torch.use_deterministic_algorithms(True, warn_only=True)`, and `main.py` sets `CUBLAS_WORKSPACE_CONFIG`.
-Negative sampling uses a dedicated generator seeded at the start of every run. Two AlphaFree runs with the same
-seed and config give identical losses and metrics on the same GPU type, with no measurable slowdown. Operations
-without a deterministic CUDA kernel log a warning instead of failing, so the graph models (sparse matrix
-products) may still vary slightly between runs.
+Negative sampling uses a dedicated generator seeded at the start of every run. Two runs with the same seed and
+config give identical losses and metrics on the same GPU type.
+
+The graph models (LightGCN, SimGCL, XSimGCL, AlphaRec) multiply by the normalized adjacency at every step
+([`SymmetricAdjacency`](src/utils/utils.py)). Because the matrix is symmetric, the backward pass is another
+product with the same matrix. `deterministic` picks the kernel:
+
+| `deterministic` | Kernel | LightGCN step on Book (3 layers, RTX A6000) | Repeatable |
+|---|---|--:|---|
+| `True` (default) | weighted `embedding_bag` over CSR rows | 14.6 ms | bit for bit |
+| `False` | cuSPARSE CSR SpMM | 5.7 ms | no (differences around 1e-7) |
+
+For comparison, PyTorch's COO `torch.sparse.mm`, which transposes and sorts the matrix at every backward pass,
+takes 21.4 ms and is not repeatable either.
 
 ## Model hyper-parameters
 
@@ -393,18 +405,20 @@ the official checkpoints, which therefore load with `strict=True`.
 Learning rate 5e-4, batch 4096, 256 negatives. AlphaRec keeps a dense `n_users × d_LR` user-LR matrix and
 propagates the full graph at every step; the AlphaFree paper reports it as out of GPU memory on Beauty and Health.
 
-### LightGCN and XSimGCL ([`LightGCN.yaml`](src/configs/model/LightGCN.yaml), [`XSimGCL.yaml`](src/configs/model/XSimGCL.yaml))
+### ID-based baselines ([`MF`](src/configs/model/MF.yaml), [`LightGCN`](src/configs/model/LightGCN.yaml), [`SimGCL`](src/configs/model/SimGCL.yaml), [`XSimGCL`](src/configs/model/XSimGCL.yaml))
 
-Both are ID-based (`is_lr_model: False`) and use BPR with 1 negative, learning rate 1e-3 and batch 2048.
+All four use ID embeddings only (`is_lr_model: False`), Xavier initialization, BPR with 1 negative, Adam with
+learning rate 1e-3 and batch 2048. MF and LightGCN train for up to 1000 epochs ("1000 epochs are sufficient for
+LightGCN to converge"), SimGCL and XSimGCL for up to 500.
 
 | Key | Model | Default | Meaning |
 |---|---|---|---|
-| `n_layers` | both | 3 | propagation layers |
-| `reg_weight` | both | 1e-4 | L2 weight on the batch's layer-0 embeddings |
-| `eps` | XSimGCL | 0.1 | magnitude of the signed uniform noise added after every layer |
+| `reg_weight` | all | 1e-4 | L2 weight on the batch's layer-0 embeddings, `0.5 · ‖·‖² / batch size` as in LightGCN |
+| `n_layers` | LightGCN, SimGCL, XSimGCL | 3 / 2 / 3 | propagation layers |
+| `eps` | SimGCL, XSimGCL | 0.1 | magnitude of the signed uniform noise added after every layer |
+| `lambda_cl` | SimGCL, XSimGCL | 0.2 | weight of the contrastive loss |
+| `tau_cl` | SimGCL, XSimGCL | 0.2 | temperature of the contrastive loss |
 | `layer_cl` | XSimGCL | 1 | layer contrasted with the final representation (1-indexed) |
-| `lambda_cl` | XSimGCL | 0.2 | weight of the contrastive loss |
-| `tau_cl` | XSimGCL | 0.2 | temperature of the contrastive loss |
 
 Values tuned on validation Recall@20 (seed 2026) are included for Movie and Video only:
 
@@ -414,6 +428,30 @@ Values tuned on validation Recall@20 (seed 2026) are included for Movie and Vide
 | XSimGCL | `n_layers` 5, `layer_cl` 1, `eps` 0.1, `lambda_cl` 0.1 | `n_layers` 5, `layer_cl` 5, `eps` 0.01, `lambda_cl` 0.01 |
 
 The other datasets use the defaults above, which are not tuned.
+
+### Tuning the baselines
+
+[`scripts/tune_baselines.py`](scripts/tune_baselines.py) tunes MF, LightGCN, SimGCL and XSimGCL with the
+search ranges of their papers. It runs one `main.py` process per configuration, with several per GPU, and
+selects on validation Recall@20. A staged search starts its next stage as soon as the previous stage has
+finished on that dataset.
+
+```bash
+python scripts/tune_baselines.py --gpus 0:4,1:4,2:2            # gpu:slots; resumes if started again
+python scripts/tune_baselines.py --report                      # best configuration per model / dataset
+```
+
+| Model | Search (seed 2026) | Source |
+|---|---|---|
+| MF | `reg_weight` ∈ {1e-6, …, 1e-2} | BPR gives no grid; the L2 range of LightGCN |
+| LightGCN | `n_layers` ∈ {1, 2, 3, 4} × `reg_weight` ∈ {1e-6, …, 1e-2} | LightGCN, Sec. 4.1.2 |
+| SimGCL | (a) `lambda_cl` ∈ {0.01, 0.05, 0.1, 0.2, 0.5, 1, 2} with `eps` 0.1, 2 layers; (b) `eps` ∈ {0, 0.01, 0.05, 0.1, 0.2, 0.5} at the best `lambda_cl`; (c) `n_layers` ∈ {1, 2, 3} | SimGCL, Sec. 4.3 and Table 3 |
+| XSimGCL | (a) `lambda_cl` ∈ {0.01, 0.05, 0.1, 0.2, 0.5, 1} × `eps` ∈ {0, 0.01, 0.05, 0.1, 0.2, 0.5}, 2 layers, `layer_cl` 1; (b) `n_layers` ∈ {1, …, 5} × `layer_cl` ∈ {1, …, `n_layers`} | XSimGCL, Sec. 4.3 and Table 4 |
+
+The SimGCL paper shows its λ values only in a figure. The list above is XSimGCL's (same authors) plus 2, the
+best value SimGCL reports on Amazon-Book. The jobs use `deterministic: False` (the faster graph kernel) unless
+`--deterministic` is given. One job already keeps an RTX A6000 busy; 4 to 8 jobs per GPU add only about 15%
+throughput.
 
 ## Verification against the official AlphaFree release
 
@@ -460,7 +498,9 @@ Video) because LRRec follows the paper, I⁺ = I ∪ (∪ S_i), and the official
 
 ```
 LRRec/
-├── scripts/download_data.sh          datasets + official AlphaFree checkpoints
+├── scripts/
+│   ├── download_data.sh              datasets + official AlphaFree checkpoints
+│   └── tune_baselines.py             paper-range tuning of MF / LightGCN / SimGCL / XSimGCL
 ├── requirements.txt
 └── src/                              run everything from here
     ├── main.py                       CLI: -m/-d/-g/-s/-t, --eval_only, --<key> <value> overrides
@@ -480,7 +520,7 @@ LRRec/
     │   ├── metrics.py                metric functions (from MMRec)
     │   ├── quick_start.py            build loaders, grid search, summary.json, --eval_only
     │   ├── logger.py, utils.py       logging, seeding, model lookup, sparse helpers
-    └── models/                       alphafree.py, alpharec.py, lightgcn.py, xsimgcl.py
+    └── models/                       alphafree.py, alpharec.py, mf.py, lightgcn.py, simgcl.py, xsimgcl.py
 ```
 
 The call chain: `main.py` → `quick_start()` → `Config` → `RecDataset` → `TrainDataLoader` and two

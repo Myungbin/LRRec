@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 LRRec is a library for language-representation (LR)-based recommendation. Its code structure is MMRec's
 (`../MMRec/src`), its data and protocol are AlphaFree's (`../AlphaFree`, official repo
 github.com/Minseojeonn/AlphaFree). All code lives under `src/`; run everything from there. Models: `AlphaFree`,
-`AlphaRec`, `LightGCN`, `XSimGCL`.
+`AlphaRec`, `MF`, `LightGCN`, `SimGCL`, `XSimGCL`. Baseline tuning: `scripts/tune_baselines.py` (paper ranges).
 
 No test suite or linter. Correctness is checked by (1) `--eval_only` on the official AlphaFree checkpoints
 (`../data/pretrained/<dataset>.pth.tar`; Movie test R@20 must be 0.1263, Video 0.1114) and (2) training runs.
@@ -53,6 +53,10 @@ Datasets: `amazon_movie`, `amazon_book_2014`, `amazon_video`, `amazon_baby`, `st
   `data/<ds>/preprocessed/<lm_model>_Kc<K_c>_simb<sim_b>_selfexcl<0|1>/` (same layout as the AlphaFree fork).
   Keep `mlp_origin` / `mlp_aug` parameter names and non-persistent buffers so official checkpoints load strictly.
 - `deterministic: True` (default) + `CUBLAS_WORKSPACE_CONFIG` set in `main.py`: same seed -> same numbers.
+  Graph models propagate with `utils.utils.build_graph` -> `SymmetricAdjacency.mm` (backward = A @ grad):
+  `embedding_bag` when deterministic, cuSPARSE CSR (~2.5x faster, not repeatable) when `--deterministic False`.
+  Never go back to COO `torch.sparse.mm` with autograd (transposes + sorts A every step, 4x slower).
+- CLI overrides are parsed with `utils.configurator.load_yaml` (so `1e-4` is a float, not a string).
 
 ## Files that are untrusted input
 

@@ -21,6 +21,31 @@ import torch
 import yaml
 
 
+class _ConfigLoader(yaml.SafeLoader):
+    """SafeLoader that also reads scientific notation without a dot ('1e-3') as a float; plain YAML 1.1 makes it
+    a string. Used for the config files and for the command-line overrides of main.py."""
+
+
+_ConfigLoader.add_implicit_resolver(
+    "tag:yaml.org,2002:float",
+    re.compile(
+        r"""^(?:
+         [-+]?(?:[0-9][0-9_]*)\.[0-9_]*(?:[eE][-+]?[0-9]+)?
+        |[-+]?(?:[0-9][0-9_]*)(?:[eE][-+]?[0-9]+)
+        |\.[0-9_]+(?:[eE][-+][0-9]+)?
+        |[-+]?[0-9][0-9_]*(?::[0-5]?[0-9])+\.[0-9_]*
+        |[-+]?\.(?:inf|Inf|INF)
+        |\.(?:nan|NaN|NAN))$""",
+        re.X,
+    ),
+    list("-+0123456789."),
+)
+
+
+def load_yaml(text):
+    return yaml.load(text, Loader=_ConfigLoader)
+
+
 class Config(object):
     def __init__(self, model=None, dataset=None, config_dict=None):
         if config_dict is None:
@@ -47,7 +72,7 @@ class Config(object):
         for file in file_list:
             if os.path.isfile(file):
                 with open(file, "r", encoding="utf-8") as f:
-                    fdata = yaml.load(f.read(), Loader=self._build_yaml_loader()) or {}
+                    fdata = load_yaml(f.read()) or {}
                 if fdata.get("hyper_parameters"):
                     hyper_parameters.extend(fdata["hyper_parameters"])
                 dataset_params = fdata.pop("dataset_params", None) or dataset_params
@@ -56,25 +81,6 @@ class Config(object):
         file_config_dict.update(dataset_params.get(config_dict["dataset"], {}) or {})
         file_config_dict["hyper_parameters"] = hyper_parameters
         return file_config_dict
-
-    def _build_yaml_loader(self):
-        # plain yaml parses '1e-3' as a string; accept scientific notation as float
-        loader = yaml.FullLoader
-        loader.add_implicit_resolver(
-            "tag:yaml.org,2002:float",
-            re.compile(
-                """^(?:
-             [-+]?(?:[0-9][0-9_]*)\\.[0-9_]*(?:[eE][-+]?[0-9]+)?
-            |[-+]?(?:[0-9][0-9_]*)(?:[eE][-+]?[0-9]+)
-            |\\.[0-9_]+(?:[eE][-+][0-9]+)?
-            |[-+]?[0-9][0-9_]*(?::[0-5]?[0-9])+\\.[0-9_]*
-            |[-+]?\\.(?:inf|Inf|INF)
-            |\\.(?:nan|NaN|NAN))$""",
-                re.X,
-            ),
-            list("-+0123456789."),
-        )
-        return loader
 
     def _set_default_parameters(self):
         smaller_metric = ["rmse", "mae", "logloss"]

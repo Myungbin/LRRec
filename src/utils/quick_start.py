@@ -134,11 +134,11 @@ def quick_start(model, dataset, config_dict, save_model=True):
             dict2str(hyper_ret[best_idx][2]),
         )
     )
-    _write_summary(log_dir, config, hyper_ret, best_idx)
+    _write_summary(log_dir, config, hyper_ret, best_idx, config_dict)
     return hyper_ret[best_idx]
 
 
-def _write_summary(log_dir, config, hyper_ret, best_idx):
+def _write_summary(log_dir, config, hyper_ret, best_idx, config_dict=None):
     """Machine-readable result: log/<model>/<dataset>/<time>/summary.json."""
     runs = [
         {"params": dict(zip(config["hyper_parameters"], map(_jsonable, p))), "best_epoch": e, "valid": k, "test": v}
@@ -146,7 +146,8 @@ def _write_summary(log_dir, config, hyper_ret, best_idx):
     ]
     ratio = split_ratio(config)
     split = "files" if ratio is None else {"ratio": list(ratio), "seed": int(config["split_seed"])}
-    summary = {"model": config["model"], "dataset": config["dataset"], "split": split,
+    overrides = {k: _jsonable(v) for k, v in (config_dict or {}).items() if k not in ("gpu_id", "log_tag")}
+    summary = {"model": config["model"], "dataset": config["dataset"], "split": split, "overrides": overrides,
                "best": runs[best_idx], "runs": runs}
     with open(os.path.join(log_dir, "summary.json"), "w") as f:
         json.dump(summary, f, indent=2)
