@@ -1,0 +1,17 @@
+# RLMRec (Ren et al., WWW'24) -- see models/rlmrec.py
+# configs/model/<backbone>.yaml (with its tuned dataset_params) is loaded before this file, so the backbone keeps
+# its own training settings and hyper-parameters; this file and the CLI override them.
+#   python main.py -m RLMRec -d amazon_movie --backbone SimGCL --align gen
+backbone: LightGCN       # LightGCN | SimGCL | XSimGCL
+align: con               # con = RLMRec-Con (contrastive) | gen = RLMRec-Gen (generative, masked reconstruction)
+is_lr_model: True        # item LRs = semantic representations; user = mean LR of the training history
+
+# official configs for Amazon-book: kd 0.01 / 0.2 for both backbones
+kd_weight: 0.01          # con: weight of the alignment InfoNCE
+kd_temperature: 0.2
+# official configs for Amazon-book: LightGCN 0.15 / 0.1 / 0.5, SimGCL 0.05 / 0.1 / 0.2
+mask_ratio: 0.15         # gen: share of all nodes (users + items) masked per step
+recon_weight: 0.1
+re_temperature: 0.5
+
+hyper_parameters: []

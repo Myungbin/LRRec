@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 LRRec is a library for language-representation (LR)-based recommendation. Its code structure is MMRec's
 (`../MMRec/src`), its data and protocol are AlphaFree's (`../AlphaFree`, official repo
 github.com/Minseojeonn/AlphaFree). All code lives under `src/`; run everything from there. Models: `AlphaFree`,
-`AlphaRec`, `MF`, `LightGCN`, `SimGCL`, `XSimGCL`. Baseline tuning: `scripts/tune_baselines.py` (paper ranges).
+`AlphaRec`, `RLMRec`, `MF`, `LightGCN`, `SimGCL`, `XSimGCL`. Baseline tuning: `scripts/tune_baselines.py` (paper ranges).
 
 No test suite or linter. Correctness is checked by (1) `--eval_only` on the official AlphaFree checkpoints
 (`../data/pretrained/<dataset>.pth.tar`; Movie test R@20 must be 0.1263, Video 0.1114) and (2) training runs.
@@ -48,8 +48,9 @@ Datasets: `amazon_movie`, `amazon_book_2014`, `amazon_video`, `amazon_baby`, `st
   split (~4:3:3); `split_ratio: [0.8,0.1,0.1]` re-splits every user at random in memory (`split_seed`). Any cache
   derived from the training split must put `split_tag(config)` in its name (as AlphaFree's augmentation does).
 - **Config** (`utils/configurator.py`): `configs/overall.yaml` < `configs/dataset/<ds>.yaml` <
-  `configs/model/<MODEL>.yaml` < `dataset_params[<ds>]` in the model yaml < CLI. Values via `config['key']`
-  (missing -> None). Hyper-parameter grid = keys in `hyper_parameters` with list values; best combo picked on
+  `configs/model/<MODEL>.yaml` < `dataset_params[<ds>]` in the model yaml < CLI. A model yaml with a `backbone`
+  key (RLMRec) loads `configs/model/<backbone>.yaml` + its `dataset_params` before its own. Values via
+  `config['key']` (missing -> None). Hyper-parameter grid = keys in `hyper_parameters` with list values; best combo picked on
   validation.
 - **Models**: registered by naming convention (`-m AlphaFree` -> class `AlphaFree` in `models/alphafree.py`) +
   `configs/model/<NAME>.yaml`. Subclass `GeneralRecommender`; implement `calculate_loss(interaction)` and
@@ -60,6 +61,9 @@ Datasets: `amazon_movie`, `amazon_book_2014`, `amazon_video`, `amazon_baby`, `st
 - **Evaluation**: `eval_protocol: alphafree` (default) masks train+test for valid and train+valid for test,
   never masking a positive of the evaluated split; `mmrec` masks train only. The Trainer sets masked scores to
   -1e10 and `EvalDataLoader.batch_hits` computes hits on the GPU.
+- **RLMRec** (`models/rlmrec.py`): copies the LightGCN / SimGCL / XSimGCL training code statement for statement
+  and appends the alignment loss (returned as a second loss term); `--kd_weight 0` must reproduce the backbone's
+  numbers bit for bit, so keep it in sync when a backbone changes.
 - **AlphaFree augmentation** (`models/alphafree.py:build_augmentation`) is cached in
   `data/<ds>/preprocessed/<lm_model>_Kc<K_c>_simb<sim_b>_selfexcl<0|1>/` (same layout as the AlphaFree fork).
   Keep `mlp_origin` / `mlp_aug` parameter names and non-persistent buffers so official checkpoints load strictly.

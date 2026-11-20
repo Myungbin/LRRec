@@ -36,6 +36,7 @@ The official AlphaFree checkpoints reproduce the official test numbers when eval
 |---|---|---|---|---|
 | `AlphaFree` | LR-based | No user embeddings, no item IDs, no GNN. User LR = weighted sum of history LRs; an MLP maps LRs to the recommendation space; co-occurrence + LR-similarity augmentation gives a second view | InfoNCE (original + augmented view) + alignment | Jeon et al., *AlphaFree: Recommendation Free from Users, IDs, and GNNs*, WWW 2026 |
 | `AlphaRec` | LR-based | User LR = mean of history LRs; shared MLP on LRs, then LightGCN propagation | InfoNCE on cosine scores | Sheng et al., *Language Representations Can be What Recommenders Need: Findings and Potentials*, ICLR 2025 |
+| `RLMRec` | LR-aligned ID-based | A LightGCN / SimGCL / XSimGCL backbone whose final embeddings are aligned with the LRs: contrastive (`con`) or masked reconstruction (`gen`) | backbone loss + alignment InfoNCE | Ren et al., *Representation Learning with Large Language Models for Recommendation*, WWW 2024 |
 | `MF` | ID-based baseline | Matrix factorization, score = e_u · e_i | BPR + L2 | Rendle et al., UAI 2009 |
 | `LightGCN` | ID-based baseline | ID embeddings + LightGCN propagation (mean of layers 0..L) | BPR + L2 | He et al., SIGIR 2020 |
 | `SimGCL` | ID-based baseline | LightGCN + contrastive learning between two noise-perturbed views | BPR + InfoNCE + L2 | Yu et al., SIGIR 2022 |
@@ -181,6 +182,7 @@ The other models run the same way:
 python main.py -m AlphaRec -d amazon_movie -g 0
 python main.py -m LightGCN -d amazon_video -g 0
 python main.py -m XSimGCL  -d amazon_video -g 0
+python main.py -m RLMRec   -d amazon_movie -g 0 --backbone SimGCL --align gen
 ```
 
 ## Command-line usage
@@ -191,7 +193,7 @@ python main.py -m <MODEL> -d <DATASET> [-g GPU] [-s] [-t TAG] [--eval_only --mod
 
 | Argument | Default | Meaning |
 |---|---|---|
-| `-m`, `--model` | `AlphaFree` | model class name (`AlphaFree`, `AlphaRec`, `MF`, `LightGCN`, `SimGCL`, `XSimGCL`) |
+| `-m`, `--model` | `AlphaFree` | model class name (`AlphaFree`, `AlphaRec`, `RLMRec`, `MF`, `LightGCN`, `SimGCL`, `XSimGCL`) |
 | `-d`, `--dataset` | `amazon_movie` | dataset directory name under `data/` |
 | `-g`, `--gpu_id` | `0` | GPU index (sets `CUDA_VISIBLE_DEVICES`) |
 | `-s`, `--save_model` | off | save the best checkpoint (by validation score) in the run directory |
@@ -266,6 +268,9 @@ configs/overall.yaml                        global defaults
   < dataset_params[<dataset>]               tuned values for this dataset, inside the model yaml
   < command line (--key value)
 ```
+
+A model whose yaml has a `backbone` key (RLMRec) first loads `configs/model/<backbone>.yaml` with its
+`dataset_params`, then its own yaml on top; `--backbone` on the command line picks another backbone.
 
 Models read values with `config['key']`, which returns `None` for missing keys.
 
@@ -404,6 +409,26 @@ the official checkpoints, which therefore load with `strict=True`.
 
 Learning rate 5e-4, batch 4096, 256 negatives. AlphaRec keeps a dense `n_users × d_LR` user-LR matrix and
 propagates the full graph at every step; the AlphaFree paper reports it as out of GPU memory on Beauty and Health.
+
+### RLMRec ([`configs/model/RLMRec.yaml`](src/configs/model/RLMRec.yaml))
+
+A backbone of this library trained with its own loss plus an alignment with the LRs. The backbone's yaml
+(training settings, tuned `dataset_params`) is loaded first, so `-m RLMRec --backbone SimGCL` is SimGCL with
+SimGCL's tuned hyper-parameters plus the alignment term; with `--kd_weight 0` it reproduces SimGCL's numbers
+exactly. Semantic representations: the dataset's item LRs and, for users, the mean LR of the training history.
+The paper uses LLM-generated user / item profiles (GPT-3.5) encoded with text-embedding-ada-002 instead.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `backbone` | `LightGCN` | `LightGCN`, `SimGCL` or `XSimGCL` |
+| `align` | `con` | `con` = RLMRec-Con, `gen` = RLMRec-Gen |
+| `kd_weight`, `kd_temperature` | 0.01, 0.2 | `con`: InfoNCE from each user / positive / negative embedding to the MLP-projected LRs (all users, or the batch's items, as negatives) |
+| `mask_ratio` | 0.15 | `gen`: share of all nodes whose layer-0 embedding is replaced by a learnable token at each step |
+| `recon_weight`, `re_temperature` | 0.1, 0.5 | `gen`: InfoNCE from the MLP-decoded final embeddings of the masked nodes to their LRs |
+
+The defaults are the official Amazon-book values (RLMRec-Gen on SimGCL: `mask_ratio` 0.05,
+`re_temperature` 0.2). Like AlphaRec, RLMRec keeps a dense `n_users × d_LR` user-LR matrix; `con` also projects
+all users' LRs at every step.
 
 ### ID-based baselines ([`MF`](src/configs/model/MF.yaml), [`LightGCN`](src/configs/model/LightGCN.yaml), [`SimGCL`](src/configs/model/SimGCL.yaml), [`XSimGCL`](src/configs/model/XSimGCL.yaml))
 

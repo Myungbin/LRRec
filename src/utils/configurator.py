@@ -4,9 +4,13 @@ Priority (later wins):
 
     configs/overall.yaml
       < configs/dataset/<dataset>.yaml
+      < configs/model/<BACKBONE>.yaml (+ its dataset_params)      (only if the model yaml has a ``backbone`` key)
       < configs/model/<MODEL>.yaml
       < configs/model/<MODEL>.yaml :: dataset_params[<dataset>]   (per-dataset tuned values)
       < config_dict (main.py: CLI flags and ``--key value`` overrides)
+
+A model built on another one (RLMRec) names it in ``backbone`` (CLI ``--backbone`` wins); the backbone's yaml
+then supplies its training settings and tuned hyper-parameters.
 
 Inside a model every value is read dict-style: ``config['key']`` (missing keys return None).
 """
@@ -57,24 +61,33 @@ class Config(object):
     def _load_dataset_model_config(self, config_dict):
         file_config_dict = dict()
         cur_dir = os.path.join(os.getcwd(), "configs")
+        model_file = os.path.join(cur_dir, "model", "{}.yaml".format(config_dict["model"]))
         file_list = [
             os.path.join(cur_dir, "overall.yaml"),
             os.path.join(cur_dir, "dataset", "{}.yaml".format(config_dict["dataset"])),
-            os.path.join(cur_dir, "model", "{}.yaml".format(config_dict["model"])),
+            model_file,
         ]
         if not os.path.isfile(file_list[0]):
             raise FileNotFoundError("configs/overall.yaml not found -- run from LRRec/src")
+        if os.path.isfile(model_file):
+            with open(model_file, "r", encoding="utf-8") as f:
+                model_yaml = load_yaml(f.read()) or {}
+            if model_yaml.get("backbone"):
+                backbone = config_dict.get("backbone") or model_yaml["backbone"]
+                backbone_file = os.path.join(cur_dir, "model", "{}.yaml".format(backbone))
+                if not os.path.isfile(backbone_file):
+                    raise FileNotFoundError(f"backbone config not found: {backbone_file}")
+                file_list.insert(2, backbone_file)
         hyper_parameters = []
-        dataset_params = {}
         for file in file_list:
             if os.path.isfile(file):
                 with open(file, "r", encoding="utf-8") as f:
                     fdata = load_yaml(f.read()) or {}
                 if fdata.get("hyper_parameters"):
                     hyper_parameters.extend(fdata["hyper_parameters"])
-                dataset_params = fdata.pop("dataset_params", None) or dataset_params
+                dataset_params = fdata.pop("dataset_params", None) or {}
                 file_config_dict.update(fdata)
-        file_config_dict.update(dataset_params.get(config_dict["dataset"], {}) or {})
+                file_config_dict.update(dataset_params.get(config_dict["dataset"], {}) or {})
         file_config_dict["hyper_parameters"] = hyper_parameters
         return file_config_dict
 
