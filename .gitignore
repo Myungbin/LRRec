@@ -227,3 +227,8 @@ __marimo__/
 src/log/
 src/saved/
 src/recommend_topk/
+result/
+experiment/
+scripts/
+insight
+figure/
