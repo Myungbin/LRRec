@@ -51,9 +51,6 @@ def get_trainer():
 
 
 def init_seed(seed, deterministic=True):
-    """Seed every RNG. ``deterministic`` also makes CUDA index/scatter backward kernels deterministic
-    (torch.use_deterministic_algorithms, warn_only for ops without a deterministic version such as sparse.mm),
-    so two runs with the same seed and config produce the same numbers on the same GPU type."""
     os.environ["PYTHONHASHSEED"] = str(seed)
     random.seed(seed)
     np.random.seed(seed)
@@ -61,9 +58,6 @@ def init_seed(seed, deterministic=True):
     if torch.cuda.is_available():
         torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-    torch.use_deterministic_algorithms(bool(deterministic), warn_only=True)
 
 
 def early_stopping(value, best, cur_step, max_step, bigger=True):
